@@ -67,23 +67,24 @@ initial_commodities = [
 df_base = pd.DataFrame(initial_commodities)
 
 
-# 2. Helper function to generate 18-month historical trends (6 Quarters) and 6-month forecast
+# 2. Helper function to generate 18-month historical trends and average of last 6 months
 def generate_price_history_and_forecast(df):
     np.random.seed(42)  # Consistent trend simulation
 
-    # 6 Quarters (Past 18 Months)
     quarters = ["Q1-2025", "Q2-2025", "Q3-2025", "Q4-2025", "Q1-2026", "Q2-2026"]
 
     history_data = []
     for idx, row in df.iterrows():
         base = row["Base_Price"]
-        # Generate quarterly price historical progression
         q_prices = [
             round(base * (1 + np.random.uniform(-0.08, 0.08)), 2)
             for _ in quarters
         ]
 
-        # Calculate 6-Month Forecasted Price (+/- percentage shift)
+        # Calculate Average Price of Last 6 Months (Q1-2026 and Q2-2026)
+        avg_last_6m = round((q_prices[-2] + q_prices[-1]) / 2, 2)
+
+        # 6-Month Forecast calculated from current price
         forecast_price = round(q_prices[-1] * (1 + row["Forecast_Shift_%"] / 100), 2)
         price_delta_pct = round(
             ((forecast_price - q_prices[-1]) / q_prices[-1]) * 100, 2
@@ -103,6 +104,7 @@ def generate_price_history_and_forecast(df):
             "Q4-2025": q_prices[3],
             "Q1-2026": q_prices[4],
             "Current (Q2-2026)": q_prices[-1],
+            "Avg Price (Last 6M)": avg_last_6m,
             "6M Forecast Price": forecast_price,
             "Forecast Shift %": price_delta_pct,
             "Variance vs Budget (%)": round(
@@ -117,7 +119,7 @@ def generate_price_history_and_forecast(df):
 
 
 # Add default budget & forecast assumption columns to base table
-df_base["Budgeted Price"] = df_base["Base_Price"] * 0.95  # Default budget target
+df_base["Budgeted Price"] = df_base["Base_Price"] * 0.95
 df_base["Forecast_Shift_%"] = [4.5, -2.0, 6.1, 1.8, 3.2, -4.0]
 
 # -------------------------------------------------------------
@@ -145,10 +147,13 @@ edited_input_df = st.data_editor(
     num_rows="dynamic",
 )
 
-# Merge edited inputs back with lat/lon coordinates
-df_full = df_base[["Commodity", "Region", "Hub Location", "lat", "lon"]].merge(
+# Merge edited inputs back with base dataset
+df_full = df_base[
+    ["Commodity", "Region", "Hub Location", "lat", "lon", "Base_Price"]
+].merge(
     edited_input_df, on=["Commodity", "Region", "Hub Location"], how="left"
 )
+
 df_full["Budgeted Price"] = df_full["Budgeted Price"].fillna(1.0)
 df_full["Forecast_Shift_%"] = df_full["Forecast_Shift_%"].fillna(0.0)
 
@@ -157,8 +162,8 @@ df_processed = generate_price_history_and_forecast(df_full)
 
 st.markdown("---")
 
-# Section 2: Historical 18-Month Trends & 6-Month Forecast Table
-st.subheader("2. 18-Month Quarterly Price Trend & 6-Month Forecast")
+# Section 2: Historical Trends, 6-Month Average & 6-Month Forecast Table
+st.subheader("2. 18-Month Quarterly Trends, 6M Average & 6M Forecast")
 st.dataframe(
     df_processed[
         [
@@ -173,6 +178,7 @@ st.dataframe(
             "Q4-2025",
             "Q1-2026",
             "Current (Q2-2026)",
+            "Avg Price (Last 6M)",
             "6M Forecast Price",
             "Forecast Shift %",
             "Variance vs Budget (%)",
@@ -190,20 +196,21 @@ fig = px.scatter_map(
     lon="lon",
     color="Forecast Shift %",
     size=df_processed["Forecast Shift %"].abs() + 2,
-    color_continuous_scale="RdYlGn_r",  # Red = Inflationary Increase, Green = Cost Reduction
+    color_continuous_scale="RdYlGn_r",
     hover_name="Commodity",
     hover_data={
         "Region": True,
         "Hub Location": True,
         "Unit": True,
         "Current (Q2-2026)": ":.2f",
+        "Avg Price (Last 6M)": ":.2f",
         "6M Forecast Price": ":.2f",
         "Budgeted Price": ":.2f",
         "Variance vs Budget (%)": ":.2f%",
     },
     map_style="open-street-map",
     zoom=2,
-    center={"lat": 42.0, "lon": -40.0},  # Centered over Atlantic to show US & Europe
+    center={"lat": 42.0, "lon": -40.0},
 )
 fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
 st.plotly_chart(fig, use_container_width=True)
