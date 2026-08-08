@@ -6,14 +6,12 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-# Optimized page setup
 st.set_page_config(
     page_title="Price Tracker",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-# Custom CSS for high legibility, white tables, black text, and light purple highlights
 st.markdown(
     """
     <style>
@@ -69,7 +67,6 @@ def check_user_access():
     st.title("🔒 Restricted Access: Authorized Users Only")
     st.caption("Enter your authorized email and password to view the price map.")
 
-    # Retrieve user dictionary from Streamlit Secrets
     try:
         authorized_users = st.secrets["users"]
     except Exception:
@@ -97,11 +94,9 @@ def check_user_access():
     return False
 
 
-# Halt execution if user is not authenticated
 if not check_user_access():
     st.stop()
 
-# Display user profile and logout option in sidebar
 with st.sidebar:
     st.markdown(f"👤 Logged in as: **{st.session_state['authenticated_user']}**")
     if st.button("🚪 Log Out"):
@@ -230,12 +225,13 @@ def generate_price_history_and_forecast(df):
         budget = row["Budgeted Price"]
         variance_pct = ((forecast_price - budget) / budget) * 100 if budget > 0 else 0.0
 
-        if variance_pct >= 10.0:
-            flag = "⚠️ Renegotiate (Over Budget)"
-        elif variance_pct <= -10.0:
-            flag = "⚠️ Renegotiate (Below Market Target)"
+        # UPDATED LOGIC: Trigger renegotiation when forecast is <= -10% vs budget
+        if variance_pct <= -10.0:
+            flag = "⚠️ Renegotiate (Forecast ≤ -10% vs Budget)"
+        elif variance_pct >= 10.0:
+            flag = "📈 Market Cost Premium (Forecast ≥ +10%)"
         else:
-            flag = "✅ Within Range"
+            flag = "✅ Within Target Range"
 
         record = {
             "Commodity": row["Commodity"],
@@ -265,8 +261,9 @@ def generate_price_history_and_forecast(df):
     return pd.DataFrame(history_data)
 
 
-df_base["Budgeted Price"] = df_base["Base_Price"] * 0.85
-df_base["Forecast_Shift_%"] = [8.5, -2.0, 12.1, 1.8, 3.2, -8.0]
+# Adjusted initial sample budget prices to demonstrate the renegotiation triggers
+df_base["Budgeted Price"] = df_base["Base_Price"] * 1.15
+df_base["Forecast_Shift_%"] = [-5.0, -12.0, 2.1, -15.0, 1.2, -8.0]
 
 # Section 1: Budget Entry
 st.subheader("1. Enter Budgeted Prices & Forecast Assumptions")
@@ -345,7 +342,7 @@ st.download_button(
 
 st.markdown("---")
 
-# Section 2: Historical Trends Table
+# Section 2: Full Table View
 st.subheader("2. 18-Month Historical Quarterly Trends & Forecasts")
 st.caption("Forecast & Shift columns are highlighted in **light purple**.")
 
