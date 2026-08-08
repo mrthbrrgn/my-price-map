@@ -27,7 +27,7 @@ st.markdown(
         color: #000000 !important;
     }
     
-    /* Wrap Table Header Text & Auto-fit */
+    /* Wrap Table Header Text */
     div[data-testid="stTable"] th, .stDataFrame th, div[data-column-header] {
         white-space: normal !important;
         word-wrap: break-word !important;
@@ -143,65 +143,77 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Base dataset
-initial_commodities = [
-    {
-        "Commodity": "Coconut Oil",
-        "Region": "Europe",
-        "lat": 51.9244,
-        "lon": 4.4777,
-        "Unit": "$/tonne",
-        "Base_Price": 1650.0,
-        "Data Source": "CME / Malayan Palm Oil Board (MPOB)",
-    },
-    {
-        "Commodity": "Palm Oil",
-        "Region": "Europe",
-        "lat": 53.5511,
-        "lon": 9.9937,
-        "Unit": "$/tonne",
-        "Base_Price": 980.0,
-        "Data Source": "Bursa Malaysia (KL CPO Futures Index)",
-    },
-    {
-        "Commodity": "IPA (Isopropyl Alcohol)",
-        "Region": "US",
-        "lat": 29.7604,
-        "lon": -95.3698,
-        "Unit": "$/kg",
-        "Base_Price": 1.45,
-        "Data Source": "ICIS Petrochemical Gulf Coast Index",
-    },
-    {
-        "Commodity": "Silicones",
-        "Region": "US",
-        "lat": 43.6156,
-        "lon": -84.2472,
-        "Unit": "$/kg",
-        "Base_Price": 3.80,
-        "Data Source": "S&P Global Platts Chemical Insights",
-    },
-    {
-        "Commodity": "Silicones",
-        "Region": "Europe",
-        "lat": 50.1109,
-        "lon": 8.6821,
-        "Unit": "$/kg",
-        "Base_Price": 4.10,
-        "Data Source": "ICIS European Silicones Benchmark",
-    },
-    {
-        "Commodity": "Glycerin",
-        "Region": "US",
-        "lat": 41.8781,
-        "lon": -87.6298,
-        "Unit": "$/tonne",
-        "Base_Price": 820.0,
-        "Data Source": "USDA Oleochemical / Refined Glycerin Reports",
-    },
-]
-
-df_base = pd.DataFrame(initial_commodities)
+# Initialize Session State Dataframe for persistence
+if "budget_df" not in st.session_state:
+    initial_commodities = [
+        {
+            "Commodity": "Coconut Oil",
+            "Region": "Europe",
+            "lat": 51.9244,
+            "lon": 4.4777,
+            "Unit": "$/tonne",
+            "Base_Price": 1650.0,
+            "Budgeted Price": 1897.5,
+            "Forecast_Shift_%": -5.0,
+            "Data Source": "CME / Malayan Palm Oil Board (MPOB)",
+        },
+        {
+            "Commodity": "Palm Oil",
+            "Region": "Europe",
+            "lat": 53.5511,
+            "lon": 9.9937,
+            "Unit": "$/tonne",
+            "Base_Price": 980.0,
+            "Budgeted Price": 1127.0,
+            "Forecast_Shift_%": -12.0,
+            "Data Source": "Bursa Malaysia (KL CPO Futures Index)",
+        },
+        {
+            "Commodity": "IPA (Isopropyl Alcohol)",
+            "Region": "US",
+            "lat": 29.7604,
+            "lon": -95.3698,
+            "Unit": "$/kg",
+            "Base_Price": 1.45,
+            "Budgeted Price": 1.67,
+            "Forecast_Shift_%": 2.1,
+            "Data Source": "ICIS Petrochemical Gulf Coast Index",
+        },
+        {
+            "Commodity": "Silicones",
+            "Region": "US",
+            "lat": 43.6156,
+            "lon": -84.2472,
+            "Unit": "$/kg",
+            "Base_Price": 3.80,
+            "Budgeted Price": 4.37,
+            "Forecast_Shift_%": -15.0,
+            "Data Source": "S&P Global Platts Chemical Insights",
+        },
+        {
+            "Commodity": "Silicones",
+            "Region": "Europe",
+            "lat": 50.1109,
+            "lon": 8.6821,
+            "Unit": "$/kg",
+            "Base_Price": 4.10,
+            "Budgeted Price": 4.71,
+            "Forecast_Shift_%": 1.2,
+            "Data Source": "ICIS European Silicones Benchmark",
+        },
+        {
+            "Commodity": "Glycerin",
+            "Region": "US",
+            "lat": 41.8781,
+            "lon": -87.6298,
+            "Unit": "$/tonne",
+            "Base_Price": 820.0,
+            "Budgeted Price": 943.0,
+            "Forecast_Shift_%": -8.0,
+            "Data Source": "USDA Oleochemical / Refined Glycerin Reports",
+        },
+    ]
+    st.session_state["budget_df"] = pd.DataFrame(initial_commodities)
 
 
 def format_currency(val):
@@ -210,7 +222,6 @@ def format_currency(val):
     return f"${val:,.2f}"
 
 
-@st.cache_data(ttl=86400 * 90)
 def generate_price_history_and_forecast(df):
     np.random.seed(42)
 
@@ -233,7 +244,6 @@ def generate_price_history_and_forecast(df):
         budget = row["Budgeted Price"]
         variance_pct = ((forecast_price - budget) / budget) * 100 if budget > 0 else 0.0
 
-        # Dynamic Negotiation Callouts with requested exact labels
         if variance_pct <= -10.0:
             flag = "🟢 Opportunity to Lower Price"
         elif variance_pct >= 10.0:
@@ -269,15 +279,13 @@ def generate_price_history_and_forecast(df):
     return pd.DataFrame(history_data)
 
 
-df_base["Budgeted Price"] = df_base["Base_Price"] * 1.15
-df_base["Forecast_Shift_%"] = [-5.0, -12.0, 2.1, -15.0, 1.2, -8.0]
-
 # Section 1: Budget Entry
 st.subheader("1. Enter Budgeted Prices & Forecast Assumptions")
-st.caption("💡 **Editable Table:** Tap/click cells to edit target prices or forecast shifts.")
+st.caption("💡 **Editable Table:** Tap/click cells to edit target prices or forecast shifts. Changes save automatically!")
 
-edited_input_df = st.data_editor(
-    df_base[
+# Render editor with session state persistence
+edited_data = st.data_editor(
+    st.session_state["budget_df"][
         [
             "Commodity",
             "Region",
@@ -301,20 +309,14 @@ edited_input_df = st.data_editor(
     },
     use_container_width=True,
     num_rows="dynamic",
+    key="editor_key",
 )
 
-df_full = df_base[
-    ["Commodity", "Region", "lat", "lon", "Base_Price", "Data Source"]
-].merge(
-    edited_input_df[["Commodity", "Region", "Unit", "Budgeted Price", "Forecast_Shift_%"]],
-    on=["Commodity", "Region"],
-    how="left",
-)
+# Update session state dataframe with edited values
+st.session_state["budget_df"].update(edited_data)
 
-df_full["Budgeted Price"] = df_full["Budgeted Price"].fillna(1.0)
-df_full["Forecast_Shift_%"] = df_full["Forecast_Shift_%"].fillna(0.0)
-
-df_processed = generate_price_history_and_forecast(df_full)
+# Process downstream calculations with saved state
+df_processed = generate_price_history_and_forecast(st.session_state["budget_df"])
 
 # Excel Export Generator
 buffer = io.BytesIO()
