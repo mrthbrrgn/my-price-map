@@ -6,24 +6,20 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-# Optimized page config for mobile and desktop
 st.set_page_config(
     page_title="Price Tracker",
     layout="wide",
-    initial_sidebar_state="collapsed",  # Collapses sidebar by default on mobile screens
+    initial_sidebar_state="collapsed",
 )
 
-# Custom CSS for Mobile Optimization, High Legibility, White Tables, Black Text, and Light Purple Highlights
 st.markdown(
     """
     <style>
-    /* Responsive Heading Font Sizes for Mobile */
     h1 { font-size: 1.8rem !important; }
     h2, h3 { font-size: 1.3rem !important; font-weight: 700 !important; }
     h4 { font-size: 1.1rem !important; font-weight: 600 !important; }
     .stCaption, p, div { font-size: 1.0rem !important; }
     
-    /* Enforce White Background & Black Text for all Dataframes/Editors */
     .stDataFrame, .stDataEditor {
         font-size: 0.95rem !important;
         background-color: #ffffff !important;
@@ -35,7 +31,6 @@ st.markdown(
         color: #000000 !important;
     }
 
-    /* Mobile Padding Adjustment */
     .block-container {
         padding-top: 1.5rem !important;
         padding-bottom: 2rem !important;
@@ -43,7 +38,6 @@ st.markdown(
         padding-right: 0.8rem !important;
     }
 
-    /* Styled callout box for Quarterly Refresh */
     .refresh-box {
         background-color: #ffffff;
         color: #000000;
@@ -61,7 +55,6 @@ st.markdown(
 st.title("US & Europe Commodity Price Tracker & Forecast")
 
 
-# Helper function to compute current Quarter & Year dynamically
 def get_current_quarter_info():
     now = datetime.datetime.now()
     quarter = (now.month - 1) // 3 + 1
@@ -70,7 +63,6 @@ def get_current_quarter_info():
 
 current_q_label, last_updated_date = get_current_quarter_info()
 
-# Banner indicating quarterly refresh schedule
 st.markdown(
     f"""
     <div class="refresh-box">
@@ -81,7 +73,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Sidebar Refresh Trigger
 with st.sidebar:
     st.header("⚙️ Data Refresh Controls")
     if st.button("🔄 Force Quarterly Data Refresh"):
@@ -89,7 +80,7 @@ with st.sidebar:
         st.success("Quarterly benchmarks successfully refreshed!")
         st.rerun()
 
-# 1. Base dataset
+# Base dataset
 initial_commodities = [
     {
         "Commodity": "Coconut Oil",
@@ -156,7 +147,6 @@ def format_currency(val):
     return f"${val:,.2f}"
 
 
-# 2. Helper function cached quarterly
 @st.cache_data(ttl=86400 * 90)
 def generate_price_history_and_forecast(df):
     np.random.seed(42)
@@ -193,7 +183,8 @@ def generate_price_history_and_forecast(df):
             "lat": row["lat"],
             "lon": row["lon"],
             "Unit": row["Unit"],
-            "Data Source": row["Data Source"],
+            "Negotiation Action": flag,  # Swapped Position
+            "Data Source": row["Data Source"],  # Swapped Position
             "Raw_Budget": budget,
             "Budgeted Price": format_currency(budget),
             "Q1-2025 (Hist)": format_currency(q_prices[0]),
@@ -208,21 +199,16 @@ def generate_price_history_and_forecast(df):
             "Forecast Shift %": f"{price_delta_pct:+.2f}%",
             "Raw_Forecast_Shift": price_delta_pct,
             "Variance vs Budget (%)": f"{variance_pct:+.2f}%",
-            "Negotiation Action": flag,
         }
         history_data.append(record)
 
     return pd.DataFrame(history_data)
 
 
-# Add default budget & forecast columns
 df_base["Budgeted Price"] = df_base["Base_Price"] * 0.85
 df_base["Forecast_Shift_%"] = [8.5, -2.0, 12.1, 1.8, 3.2, -8.0]
 
-# -------------------------------------------------------------
-# Section 1: Budget Entry & Excel Export
-# -------------------------------------------------------------
-
+# Section 1: Budget Entry
 st.subheader("1. Enter Budgeted Prices & Forecast Assumptions")
 st.caption("💡 **Editable Table:** Tap/click cells to edit target prices or forecast shifts.")
 
@@ -253,7 +239,6 @@ edited_input_df = st.data_editor(
     num_rows="dynamic",
 )
 
-# Merge back edited input data
 df_full = df_base[
     ["Commodity", "Region", "lat", "lon", "Base_Price", "Data Source"]
 ].merge(
@@ -267,7 +252,7 @@ df_full["Forecast_Shift_%"] = df_full["Forecast_Shift_%"].fillna(0.0)
 
 df_processed = generate_price_history_and_forecast(df_full)
 
-# Excel Export Generator Button
+# Excel Export Generator
 buffer = io.BytesIO()
 with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
     df_processed[
@@ -275,7 +260,6 @@ with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             "Commodity",
             "Region",
             "Unit",
-            "Data Source",
             "Budgeted Price",
             "Q1-2025 (Hist)",
             "Q2-2025 (Hist)",
@@ -287,7 +271,8 @@ with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             "6M Forecast Price",
             "Forecast Shift %",
             "Variance vs Budget (%)",
-            "Negotiation Action",
+            "Negotiation Action",  # Swapped
+            "Data Source",  # Swapped
         ]
     ].to_excel(writer, sheet_name="Price_Trends", index=False)
 
@@ -300,34 +285,40 @@ st.download_button(
 
 st.markdown("---")
 
-# -------------------------------------------------------------
-# Section 2: Collapsible 18-Month Quarterly Trends Table
-# -------------------------------------------------------------
-# Collapsible Expander to save mobile screen real estate
+# Section 2: Collapsible Quarterly Trends Table
 with st.expander("📊 View 18-Month Historical Quarterly Trends & Forecasts (Tap to Expand)", expanded=False):
     st.caption("Forecast & Shift columns are highlighted in **light purple**.")
 
+    # Toggle switch to show/hide historical quarterly columns to prevent horizontal scrolling
+    show_historical_quarters = st.checkbox("Show Historical Quarterly Columns (Q1-2025 to Current)", value=False)
+
+    # Core base columns always displayed
+    base_cols = ["Commodity", "Region", "Unit", "Budgeted Price"]
+    
+    # Historical columns toggled on/off
+    hist_cols = [
+        "Q1-2025 (Hist)",
+        "Q2-2025 (Hist)",
+        "Q3-2025 (Hist)",
+        "Q4-2025 (Hist)",
+        "Q1-2026 (Hist)",
+        "Current Q2-2026 (Hist)",
+    ] if show_historical_quarters else []
+
+    # Summary and Swapped columns always displayed
+    summary_cols = [
+        "Avg Price (Last 6M)",
+        "6M Forecast Price",
+        "Forecast Shift %",
+        "Variance vs Budget (%)",
+        "Negotiation Action",  # Swapped
+        "Data Source",  # Swapped
+    ]
+
+    selected_display_cols = base_cols + hist_cols + summary_cols
+
     styled_df = (
-        df_processed[
-            [
-                "Commodity",
-                "Region",
-                "Unit",
-                "Data Source",
-                "Budgeted Price",
-                "Q1-2025 (Hist)",
-                "Q2-2025 (Hist)",
-                "Q3-2025 (Hist)",
-                "Q4-2025 (Hist)",
-                "Q1-2026 (Hist)",
-                "Current Q2-2026 (Hist)",
-                "Avg Price (Last 6M)",
-                "6M Forecast Price",
-                "Forecast Shift %",
-                "Variance vs Budget (%)",
-                "Negotiation Action",
-            ]
-        ]
+        df_processed[selected_display_cols]
         .style.map(
             lambda x: "background-color: #ffffff; color: #000000;"
         )
@@ -339,9 +330,7 @@ with st.expander("📊 View 18-Month Historical Quarterly Trends & Forecasts (Ta
 
     st.dataframe(styled_df, use_container_width=True)
 
-# -------------------------------------------------------------
 # Section 3: Charts & Map
-# -------------------------------------------------------------
 st.markdown("#### 📈 Price Trend Trajectory (18 Months + 6M Forecast)")
 
 time_cols = [
@@ -446,13 +435,13 @@ fig_map = px.scatter_map(
     hover_data={
         "Region": True,
         "Unit": True,
-        "Data Source": True,
         "Current Q2-2026 (Hist)": True,
         "Avg Price (Last 6M)": True,
         "6M Forecast Price": True,
         "Budgeted Price": True,
         "Variance vs Budget (%)": True,
-        "Negotiation Action": True,
+        "Negotiation Action": True,  # Swapped
+        "Data Source": True,  # Swapped
         "Raw_Forecast_Shift": False,
     },
     map_style="open-street-map",
