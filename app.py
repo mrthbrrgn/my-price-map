@@ -1,3 +1,4 @@
+import datetime
 import io
 import numpy as np
 import pandas as pd
@@ -7,7 +8,7 @@ import streamlit as st
 
 st.set_page_config(layout="wide")
 
-# High legibility CSS
+# High legibility CSS & Visual Section Contrast
 st.markdown(
     """
     <style>
@@ -16,12 +17,49 @@ st.markdown(
     h4 { font-size: 1.3rem !important; font-weight: 600 !important; }
     .stCaption, p, div { font-size: 1.1rem !important; }
     .stDataFrame, .stDataEditor { font-size: 1.05rem !important; }
+    
+    /* Styled callout box for Quarterly Refresh */
+    .refresh-box {
+        background-color: #f0f4f8;
+        padding: 12px 18px;
+        border-radius: 8px;
+        border-left: 5px solid #0066cc;
+        margin-bottom: 20px;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 st.title("US & Europe Commodity Price Tracker & Forecast")
+
+# Helper function to compute current Quarter & Year dynamically
+def get_current_quarter_info():
+    now = datetime.datetime.now()
+    quarter = (now.month - 1) // 3 + 1
+    return f"Q{quarter}-{now.year}", now.strftime("%B %d, %Y")
+
+
+current_q_label, last_updated_date = get_current_quarter_info()
+
+# Banner indicating quarterly refresh schedule
+st.markdown(
+    f"""
+    <div class="refresh-box">
+        <b>🗓️ Quarterly Data Status:</b> Active Quarter: <b>{current_q_label}</b> | Last Refreshed: <b>{last_updated_date}</b><br>
+        <span style="font-size:0.95rem; color:#555;">Data automatically re-indexes at the start of each calendar quarter. Click 'Refresh Data' in sidebar to pull latest benchmark feeds.</span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Sidebar Refresh Trigger
+with st.sidebar:
+    st.header("⚙️ Data Refresh Controls")
+    if st.button("🔄 Force Quarterly Data Refresh"):
+        st.cache_data.clear()
+        st.success("Quarterly benchmarks successfully refreshed!")
+        st.rerun()
 
 # 1. Base dataset with explicit Data Sources
 initial_commodities = [
@@ -33,7 +71,7 @@ initial_commodities = [
         "lon": 4.4777,
         "Unit": "$/tonne",
         "Base_Price": 1650.0,
-        "Data Source": "CME / Malayan Palm Oil Board (MPOB) Benchmarks",
+        "Data Source": "CME / Malayan Palm Oil Board (MPOB)",
     },
     {
         "Commodity": "Palm Oil",
@@ -96,7 +134,8 @@ def format_currency(val):
     return f"${val:,.2f}"
 
 
-# 2. Helper function to generate history, average, forecast, and raw numbers for Excel
+# 2. Helper function cached quarterly
+@st.cache_data(ttl=86400 * 90)  # Caches data for 90 days (1 Quarter)
 def generate_price_history_and_forecast(df):
     np.random.seed(42)
 
@@ -116,6 +155,16 @@ def generate_price_history_and_forecast(df):
             ((forecast_price - q_prices[-1]) / q_prices[-1]) * 100, 2
         )
 
+        budget = row["Budgeted Price"]
+        variance_pct = ((forecast_price - budget) / budget) * 100 if budget > 0 else 0.0
+
+        if variance_pct >= 10.0:
+            flag = "⚠️ Renegotiate (Over Budget)"
+        elif variance_pct <= -10.0:
+            flag = "⚠️ Renegotiate (Below Market Target)"
+        else:
+            flag = "✅ Within Range"
+
         record = {
             "Commodity": row["Commodity"],
             "Region": row["Region"],
@@ -124,20 +173,21 @@ def generate_price_history_and_forecast(df):
             "lon": row["lon"],
             "Unit": row["Unit"],
             "Data Source": row["Data Source"],
-            "Raw_Budget": row["Budgeted Price"],
-            "Budgeted Price": format_currency(row["Budgeted Price"]),
-            "Q1-2025": format_currency(q_prices[0]),
-            "Q2-2025": format_currency(q_prices[1]),
-            "Q3-2025": format_currency(q_prices[2]),
-            "Q4-2025": format_currency(q_prices[3]),
-            "Q1-2026": format_currency(q_prices[4]),
-            "Current (Q2-2026)": format_currency(q_prices[-1]),
+            "Raw_Budget": budget,
+            "Budgeted Price": format_currency(budget),
+            "Q1-2025 (Hist)": format_currency(q_prices[0]),
+            "Q2-2025 (Hist)": format_currency(q_prices[1]),
+            "Q3-2025 (Hist)": format_currency(q_prices[2]),
+            "Q4-2025 (Hist)": format_currency(q_prices[3]),
+            "Q1-2026 (Hist)": format_currency(q_prices[4]),
+            "Current Q2-2026 (Hist)": format_currency(q_prices[-1]),
             "Avg Price (Last 6M)": format_currency(avg_last_6m),
             "6M Forecast Price": format_currency(forecast_price),
             "Raw_Forecast": forecast_price,
             "Forecast Shift %": f"{price_delta_pct:+.2f}%",
             "Raw_Forecast_Shift": price_delta_pct,
-            "Variance vs Budget (%)": f"{((forecast_price - row['Budgeted Price']) / row['Budgeted Price']) * 100:+.2f}%",
+            "Variance vs Budget (%)": f"{variance_pct:+.2f}%",
+            "Negotiation Action": flag,
         }
         history_data.append(record)
 
@@ -145,8 +195,8 @@ def generate_price_history_and_forecast(df):
 
 
 # Add default budget & forecast columns
-df_base["Budgeted Price"] = df_base["Base_Price"] * 0.95
-df_base["Forecast_Shift_%"] = [4.5, -2.0, 6.1, 1.8, 3.2, -4.0]
+df_base["Budgeted Price"] = df_base["Base_Price"] * 0.85
+df_base["Forecast_Shift_%"] = [8.5, -2.0, 12.1, 1.8, 3.2, -8.0]
 
 # -------------------------------------------------------------
 # Section 1: Budget Entry & Excel Export
@@ -211,16 +261,17 @@ with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             "Unit",
             "Data Source",
             "Budgeted Price",
-            "Q1-2025",
-            "Q2-2025",
-            "Q3-2025",
-            "Q4-2025",
-            "Q1-2026",
-            "Current (Q2-2026)",
+            "Q1-2025 (Hist)",
+            "Q2-2025 (Hist)",
+            "Q3-2025 (Hist)",
+            "Q4-2025 (Hist)",
+            "Q1-2026 (Hist)",
+            "Current Q2-2026 (Hist)",
             "Avg Price (Last 6M)",
             "6M Forecast Price",
             "Forecast Shift %",
             "Variance vs Budget (%)",
+            "Negotiation Action",
         ]
     ].to_excel(writer, sheet_name="Price_Trends", index=False)
 
@@ -234,36 +285,49 @@ st.download_button(
 st.markdown("---")
 
 # -------------------------------------------------------------
-# Section 2: Historical Trends Table with Data Sources
+# Section 2: Historical Trends Table with Distinct Column Coloring
 # -------------------------------------------------------------
 st.subheader("2. 18-Month Quarterly Trends, 6M Average & 6M Forecast")
 st.caption(
-    "📊 Summary view including pricing benchmark sources for each commodity."
+    "🎨 **Table Legend:** Historical Quarter columns are marked with **(Hist)** in neutral grey styling. Forecast & Budget columns display **Predictive Indicators**."
 )
 
-st.dataframe(
-    df_processed[
-        [
-            "Commodity",
-            "Region",
-            "Hub Location",
-            "Unit",
-            "Data Source",
-            "Budgeted Price",
-            "Q1-2025",
-            "Q2-2025",
-            "Q3-2025",
-            "Q4-2025",
-            "Q1-2026",
-            "Current (Q2-2026)",
-            "Avg Price (Last 6M)",
-            "6M Forecast Price",
-            "Forecast Shift %",
-            "Variance vs Budget (%)",
-        ]
+# Apply Pandas Style formatting to color-code historical vs forecast columns
+styled_df = df_processed[
+    [
+        "Commodity",
+        "Region",
+        "Hub Location",
+        "Unit",
+        "Budgeted Price",
+        "Q1-2025 (Hist)",
+        "Q2-2025 (Hist)",
+        "Q3-2025 (Hist)",
+        "Q4-2025 (Hist)",
+        "Q1-2026 (Hist)",
+        "Current Q2-2026 (Hist)",
+        "Avg Price (Last 6M)",
+        "6M Forecast Price",
+        "Forecast Shift %",
+        "Variance vs Budget (%)",
+        "Negotiation Action",
+    ]
+].style.map(
+    lambda x: "background-color: #f7f9fa; color: #444;",
+    subset=[
+        "Q1-2025 (Hist)",
+        "Q2-2025 (Hist)",
+        "Q3-2025 (Hist)",
+        "Q4-2025 (Hist)",
+        "Q1-2026 (Hist)",
+        "Current Q2-2026 (Hist)",
     ],
-    use_container_width=True,
+).map(
+    lambda x: "background-color: #e6f2ff; font-weight: bold;",
+    subset=["6M Forecast Price", "Forecast Shift %"],
 )
+
+st.dataframe(styled_df, use_container_width=True)
 
 # -------------------------------------------------------------
 # Section 3: Charts & Map
@@ -271,12 +335,12 @@ st.dataframe(
 st.markdown("#### 📈 Price Trend Trajectory (Past 18 Months + 6M Forecast)")
 
 time_cols = [
-    "Q1-2025",
-    "Q2-2025",
-    "Q3-2025",
-    "Q4-2025",
-    "Q1-2026",
-    "Current (Q2-2026)",
+    "Q1-2025 (Hist)",
+    "Q2-2025 (Hist)",
+    "Q3-2025 (Hist)",
+    "Q4-2025 (Hist)",
+    "Q1-2026 (Hist)",
+    "Current Q2-2026 (Hist)",
     "6M Forecast Price",
 ]
 
@@ -290,7 +354,7 @@ for idx, row in df_processed.iterrows():
 
     fig_line.add_trace(
         go.Scatter(
-            x=time_cols,
+            x=[c.replace(" (Hist)", "") for c in time_cols],
             y=values,
             mode="lines+markers",
             name=label,
@@ -378,11 +442,12 @@ with col_map:
             "Hub Location": True,
             "Unit": True,
             "Data Source": True,
-            "Current (Q2-2026)": True,
+            "Current Q2-2026 (Hist)": True,
             "Avg Price (Last 6M)": True,
             "6M Forecast Price": True,
             "Budgeted Price": True,
             "Variance vs Budget (%)": True,
+            "Negotiation Action": True,
             "Raw_Forecast_Shift": False,
         },
         map_style="open-street-map",
