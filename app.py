@@ -6,21 +6,26 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-st.set_page_config(layout="wide")
+# Optimized page config for mobile and desktop
+st.set_page_config(
+    page_title="Price Tracker",
+    layout="wide",
+    initial_sidebar_state="collapsed",  # Collapses sidebar by default on mobile screens
+)
 
-# Custom CSS for fonts, white table backgrounds, black text, and light purple highlights
+# Custom CSS for Mobile Optimization, High Legibility, White Tables, Black Text, and Light Purple Highlights
 st.markdown(
     """
     <style>
-    /* Heading Font Sizes */
-    h1 { font-size: 2.2rem !important; }
-    h2, h3 { font-size: 1.6rem !important; font-weight: 700 !important; }
-    h4 { font-size: 1.3rem !important; font-weight: 600 !important; }
-    .stCaption, p, div { font-size: 1.1rem !important; }
+    /* Responsive Heading Font Sizes for Mobile */
+    h1 { font-size: 1.8rem !important; }
+    h2, h3 { font-size: 1.3rem !important; font-weight: 700 !important; }
+    h4 { font-size: 1.1rem !important; font-weight: 600 !important; }
+    .stCaption, p, div { font-size: 1.0rem !important; }
     
     /* Enforce White Background & Black Text for all Dataframes/Editors */
     .stDataFrame, .stDataEditor {
-        font-size: 1.05rem !important;
+        font-size: 0.95rem !important;
         background-color: #ffffff !important;
         color: #000000 !important;
     }
@@ -30,15 +35,23 @@ st.markdown(
         color: #000000 !important;
     }
 
+    /* Mobile Padding Adjustment */
+    .block-container {
+        padding-top: 1.5rem !important;
+        padding-bottom: 2rem !important;
+        padding-left: 0.8rem !important;
+        padding-right: 0.8rem !important;
+    }
+
     /* Styled callout box for Quarterly Refresh */
     .refresh-box {
         background-color: #ffffff;
         color: #000000;
-        padding: 12px 18px;
+        padding: 10px 14px;
         border-radius: 8px;
         border: 1px solid #e0e0e0;
         border-left: 5px solid #8a2be2;
-        margin-bottom: 20px;
+        margin-bottom: 15px;
     }
     </style>
     """,
@@ -61,8 +74,8 @@ current_q_label, last_updated_date = get_current_quarter_info()
 st.markdown(
     f"""
     <div class="refresh-box">
-        <b>🗓️ Quarterly Data Status:</b> Active Quarter: <b>{current_q_label}</b> | Last Refreshed: <b>{last_updated_date}</b><br>
-        <span style="font-size:0.95rem; color:#333333;">Data automatically re-indexes at the start of each calendar quarter. Click 'Refresh Data' in sidebar to pull latest benchmark feeds.</span>
+        <b>🗓️ Quarterly Data Status:</b> Active Quarter: <b>{current_q_label}</b><br>
+        <span style="font-size:0.85rem; color:#333333;">Last Refreshed: {last_updated_date}</span>
     </div>
     """,
     unsafe_allow_html=True,
@@ -144,7 +157,7 @@ def format_currency(val):
 
 
 # 2. Helper function cached quarterly
-@st.cache_data(ttl=86400 * 90)  # Caches data for 90 days (1 Quarter)
+@st.cache_data(ttl=86400 * 90)
 def generate_price_history_and_forecast(df):
     np.random.seed(42)
 
@@ -207,13 +220,11 @@ df_base["Budgeted Price"] = df_base["Base_Price"] * 0.85
 df_base["Forecast_Shift_%"] = [8.5, -2.0, 12.1, 1.8, 3.2, -8.0]
 
 # -------------------------------------------------------------
-# Section 1: Budget Entry & Excel Export (Data Source Removed Here)
+# Section 1: Budget Entry & Excel Export
 # -------------------------------------------------------------
 
 st.subheader("1. Enter Budgeted Prices & Forecast Assumptions")
-st.caption(
-    "💡 **Editable Table:** Double-click cells to adjust budgeted prices or forecast shifts."
-)
+st.caption("💡 **Editable Table:** Tap/click cells to edit target prices or forecast shifts.")
 
 edited_input_df = st.data_editor(
     df_base[
@@ -242,7 +253,7 @@ edited_input_df = st.data_editor(
     num_rows="dynamic",
 )
 
-# FIXED: Merging purely on Commodity & Region prevents KeyError
+# Merge back edited input data
 df_full = df_base[
     ["Commodity", "Region", "lat", "lon", "Base_Price", "Data Source"]
 ].merge(
@@ -281,7 +292,7 @@ with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
     ].to_excel(writer, sheet_name="Price_Trends", index=False)
 
 st.download_button(
-    label="📥 Download Price Trends & Forecasts to Excel (.xlsx)",
+    label="📥 Export Excel File (.xlsx)",
     data=buffer.getvalue(),
     file_name="commodity_price_trends_and_forecast.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -290,49 +301,48 @@ st.download_button(
 st.markdown("---")
 
 # -------------------------------------------------------------
-# Section 2: Historical Trends Table with Light Purple Highlights
+# Section 2: Collapsible 18-Month Quarterly Trends Table
 # -------------------------------------------------------------
-st.subheader("2. 18-Month Quarterly Trends, 6M Average & 6M Forecast")
-st.caption(
-    "🎨 **Table Styling:** Clean white background with black text. Forecast & Shift columns are highlighted in **light purple**."
-)
+# Collapsible Expander to save mobile screen real estate
+with st.expander("📊 View 18-Month Historical Quarterly Trends & Forecasts (Tap to Expand)", expanded=False):
+    st.caption("Forecast & Shift columns are highlighted in **light purple**.")
 
-styled_df = (
-    df_processed[
-        [
-            "Commodity",
-            "Region",
-            "Unit",
-            "Data Source",
-            "Budgeted Price",
-            "Q1-2025 (Hist)",
-            "Q2-2025 (Hist)",
-            "Q3-2025 (Hist)",
-            "Q4-2025 (Hist)",
-            "Q1-2026 (Hist)",
-            "Current Q2-2026 (Hist)",
-            "Avg Price (Last 6M)",
-            "6M Forecast Price",
-            "Forecast Shift %",
-            "Variance vs Budget (%)",
-            "Negotiation Action",
+    styled_df = (
+        df_processed[
+            [
+                "Commodity",
+                "Region",
+                "Unit",
+                "Data Source",
+                "Budgeted Price",
+                "Q1-2025 (Hist)",
+                "Q2-2025 (Hist)",
+                "Q3-2025 (Hist)",
+                "Q4-2025 (Hist)",
+                "Q1-2026 (Hist)",
+                "Current Q2-2026 (Hist)",
+                "Avg Price (Last 6M)",
+                "6M Forecast Price",
+                "Forecast Shift %",
+                "Variance vs Budget (%)",
+                "Negotiation Action",
+            ]
         ]
-    ]
-    .style.map(
-        lambda x: "background-color: #ffffff; color: #000000;"
+        .style.map(
+            lambda x: "background-color: #ffffff; color: #000000;"
+        )
+        .map(
+            lambda x: "background-color: #f3e8ff; color: #000000; font-weight: bold;",
+            subset=["6M Forecast Price", "Forecast Shift %"],
+        )
     )
-    .map(
-        lambda x: "background-color: #f3e8ff; color: #000000; font-weight: bold;",
-        subset=["6M Forecast Price", "Forecast Shift %"],
-    )
-)
 
-st.dataframe(styled_df, use_container_width=True)
+    st.dataframe(styled_df, use_container_width=True)
 
 # -------------------------------------------------------------
 # Section 3: Charts & Map
 # -------------------------------------------------------------
-st.markdown("#### 📈 Price Trend Trajectory (Past 18 Months + 6M Forecast)")
+st.markdown("#### 📈 Price Trend Trajectory (18 Months + 6M Forecast)")
 
 time_cols = [
     "Q1-2025 (Hist)",
@@ -363,8 +373,8 @@ for idx, row in df_processed.iterrows():
     )
 
 fig_line.update_layout(
-    xaxis=dict(title="Timeline (Quarters to 6M Forecast)", tickfont=dict(size=14)),
-    yaxis=dict(title="Price ($)", tickfont=dict(size=14), tickprefix="$"),
+    xaxis=dict(title="Timeline", tickfont=dict(size=11)),
+    yaxis=dict(title="Price ($)", tickfont=dict(size=11), tickprefix="$"),
     hovermode="x unified",
     legend=dict(
         orientation="h",
@@ -372,86 +382,82 @@ fig_line.update_layout(
         y=1.02,
         xanchor="right",
         x=1,
-        font=dict(size=13),
+        font=dict(size=10),
     ),
-    margin=dict(l=20, r=20, t=40, b=20),
+    margin=dict(l=10, r=10, t=30, b=10),
 )
 
 st.plotly_chart(fig_line, use_container_width=True)
 
 st.markdown("---")
 
-col_chart, col_map = st.columns([1, 1])
+st.subheader("3. Budget vs Forecasted Price Comparison")
 
-with col_chart:
-    st.subheader("3. Budget vs Forecasted Price Comparison")
+fig_bar = go.Figure()
+labels = [
+    f"{r['Commodity']} ({r['Region']})" for _, r in df_processed.iterrows()
+]
 
-    fig_bar = go.Figure()
-    labels = [
-        f"{r['Commodity']} ({r['Region']})" for _, r in df_processed.iterrows()
-    ]
-
-    fig_bar.add_trace(
-        go.Bar(
-            x=labels,
-            y=df_processed["Raw_Budget"],
-            name="Budgeted Price ($)",
-            marker_color="#4A90E2",
-        )
+fig_bar.add_trace(
+    go.Bar(
+        x=labels,
+        y=df_processed["Raw_Budget"],
+        name="Budgeted Price ($)",
+        marker_color="#4A90E2",
     )
+)
 
-    fig_bar.add_trace(
-        go.Bar(
-            x=labels,
-            y=df_processed["Raw_Forecast"],
-            name="6M Forecast Price ($)",
-            marker_color="#8A2BE2",
-        )
+fig_bar.add_trace(
+    go.Bar(
+        x=labels,
+        y=df_processed["Raw_Forecast"],
+        name="6M Forecast Price ($)",
+        marker_color="#8A2BE2",
     )
+)
 
-    fig_bar.update_layout(
-        barmode="group",
-        xaxis=dict(title="Commodity & Region", tickfont=dict(size=13)),
-        yaxis=dict(title="Price ($)", tickfont=dict(size=13), tickprefix="$"),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-            font=dict(size=13),
-        ),
-        margin=dict(l=20, r=20, t=40, b=20),
-    )
+fig_bar.update_layout(
+    barmode="group",
+    xaxis=dict(title="Commodity & Region", tickfont=dict(size=11)),
+    yaxis=dict(title="Price ($)", tickfont=dict(size=11), tickprefix="$"),
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1,
+        font=dict(size=10),
+    ),
+    margin=dict(l=10, r=10, t=30, b=10),
+)
 
-    st.plotly_chart(fig_bar, use_container_width=True)
+st.plotly_chart(fig_bar, use_container_width=True)
 
-with col_map:
-    st.subheader("4. US & Europe Predictive Map")
+st.subheader("4. US & Europe Predictive Map")
 
-    fig_map = px.scatter_map(
-        df_processed,
-        lat="lat",
-        lon="lon",
-        color="Raw_Forecast_Shift",
-        size=df_processed["Raw_Forecast_Shift"].abs() + 3,
-        color_continuous_scale="RdYlGn_r",
-        hover_name="Commodity",
-        hover_data={
-            "Region": True,
-            "Unit": True,
-            "Data Source": True,
-            "Current Q2-2026 (Hist)": True,
-            "Avg Price (Last 6M)": True,
-            "6M Forecast Price": True,
-            "Budgeted Price": True,
-            "Variance vs Budget (%)": True,
-            "Negotiation Action": True,
-            "Raw_Forecast_Shift": False,
-        },
-        map_style="open-street-map",
-        zoom=2,
-        center={"lat": 42.0, "lon": -40.0},
-    )
-    fig_map.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
-    st.plotly_chart(fig_map, use_container_width=True)
+fig_map = px.scatter_map(
+    df_processed,
+    lat="lat",
+    lon="lon",
+    color="Raw_Forecast_Shift",
+    size=df_processed["Raw_Forecast_Shift"].abs() + 3,
+    color_continuous_scale="RdYlGn_r",
+    hover_name="Commodity",
+    hover_data={
+        "Region": True,
+        "Unit": True,
+        "Data Source": True,
+        "Current Q2-2026 (Hist)": True,
+        "Avg Price (Last 6M)": True,
+        "6M Forecast Price": True,
+        "Budgeted Price": True,
+        "Variance vs Budget (%)": True,
+        "Negotiation Action": True,
+        "Raw_Forecast_Shift": False,
+    },
+    map_style="open-street-map",
+    zoom=1.5,
+    center={"lat": 42.0, "lon": -40.0},
+)
+fig_map.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
+st.plotly_chart(fig_map, use_container_width=True)
