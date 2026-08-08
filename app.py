@@ -143,7 +143,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Initialize Session State Dataframe for persistence
+# Initialize Session State Dataframe with Primary Drivers
 if "budget_df" not in st.session_state:
     initial_commodities = [
         {
@@ -155,6 +155,7 @@ if "budget_df" not in st.session_state:
             "Base_Price": 1650.0,
             "Budgeted Price": 1897.5,
             "Forecast_Shift_%": -5.0,
+            "Primary Driver": "Tariffs & Ocean Freight Surcharges",
             "Data Source": "CME / Malayan Palm Oil Board (MPOB)",
         },
         {
@@ -166,6 +167,7 @@ if "budget_df" not in st.session_state:
             "Base_Price": 980.0,
             "Budgeted Price": 1127.0,
             "Forecast_Shift_%": -12.0,
+            "Primary Driver": "Agricultural Yields & Weather Shifts",
             "Data Source": "Bursa Malaysia (KL CPO Futures Index)",
         },
         {
@@ -177,6 +179,7 @@ if "budget_df" not in st.session_state:
             "Base_Price": 1.45,
             "Budgeted Price": 1.67,
             "Forecast_Shift_%": 2.1,
+            "Primary Driver": "Geopolitical / Energy Shock (Crude Spike)",
             "Data Source": "ICIS Petrochemical Gulf Coast Index",
         },
         {
@@ -188,6 +191,7 @@ if "budget_df" not in st.session_state:
             "Base_Price": 3.80,
             "Budgeted Price": 4.37,
             "Forecast_Shift_%": -15.0,
+            "Primary Driver": "Energy Intensive Manufacturing Costs",
             "Data Source": "S&P Global Platts Chemical Insights",
         },
         {
@@ -199,6 +203,7 @@ if "budget_df" not in st.session_state:
             "Base_Price": 4.10,
             "Budgeted Price": 4.71,
             "Forecast_Shift_%": 1.2,
+            "Primary Driver": "EU Energy Surcharges & Import Duties",
             "Data Source": "ICIS European Silicones Benchmark",
         },
         {
@@ -210,6 +215,7 @@ if "budget_df" not in st.session_state:
             "Base_Price": 820.0,
             "Budgeted Price": 943.0,
             "Forecast_Shift_%": -8.0,
+            "Primary Driver": "Baseline Inflation & Domestic Freight",
             "Data Source": "USDA Oleochemical / Refined Glycerin Reports",
         },
     ]
@@ -257,6 +263,7 @@ def generate_price_history_and_forecast(df):
             "lat": row["lat"],
             "lon": row["lon"],
             "Unit": row["Unit"],
+            "Primary Driver": row["Primary Driver"],
             "Negotiation Action": flag,
             "Data Source": row["Data Source"],
             "Raw_Budget": budget,
@@ -279,17 +286,17 @@ def generate_price_history_and_forecast(df):
     return pd.DataFrame(history_data)
 
 
-# Section 1: Budget Entry
+# Section 1: Budget Entry & Assumptions
 st.subheader("1. Enter Budgeted Prices & Forecast Assumptions")
-st.caption("💡 **Editable Table:** Tap/click cells to edit target prices or forecast shifts. Changes save automatically!")
+st.caption("💡 **Editable Table:** Tap/click cells to edit target prices or forecast shifts.")
 
-# Render editor with session state persistence
 edited_data = st.data_editor(
     st.session_state["budget_df"][
         [
             "Commodity",
             "Region",
             "Unit",
+            "Primary Driver",
             "Budgeted Price",
             "Forecast_Shift_%",
         ]
@@ -306,16 +313,18 @@ edited_data = st.data_editor(
             help="Expected percentage shift over next 6 months.",
             format="%.2f%%",
         ),
+        "Primary Driver": st.column_config.TextColumn(
+            "Primary Cost Driver",
+            help="Main cause driving price changes (e.g., Inflation, Geopolitical, Tariffs).",
+        ),
     },
     use_container_width=True,
     num_rows="dynamic",
     key="editor_key",
 )
 
-# Update session state dataframe with edited values
 st.session_state["budget_df"].update(edited_data)
 
-# Process downstream calculations with saved state
 df_processed = generate_price_history_and_forecast(st.session_state["budget_df"])
 
 # Excel Export Generator
@@ -326,6 +335,7 @@ with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             "Commodity",
             "Region",
             "Unit",
+            "Primary Driver",
             "Budgeted Price",
             "Q1-2025 (Hist)",
             "Q2-2025 (Hist)",
@@ -357,7 +367,7 @@ st.caption("Budgeted prices are in **light green**, Forecast columns in **light 
 
 show_historical_quarters = st.checkbox("Show Historical Quarterly Columns (Q1-2025 to Current)", value=False)
 
-base_cols = ["Commodity", "Region", "Unit", "Budgeted Price"]
+base_cols = ["Commodity", "Region", "Unit", "Primary Driver", "Budgeted Price"]
 
 hist_cols = [
     "Q1-2025 (Hist)",
@@ -433,9 +443,32 @@ for idx, row in df_processed.iterrows():
             y=values,
             mode="lines+markers",
             name=label,
-            hovertemplate=f"<b>{label}</b><br>Period: %{{x}}<br>Price: $%{{y:,.2f}}<extra></extra>",
+            hovertemplate=f"<b>{label}</b><br>Driver: {row['Primary Driver']}<br>Period: %{{x}}<br>Price: $%{{y:,.2f}}<extra></extra>",
         )
     )
+
+# Macro Driver Event Annotations on Line Chart
+fig_line.add_vline(x="Q3-2025", line_width=1, line_dash="dash", line_color="red")
+fig_line.add_annotation(
+    x="Q3-2025",
+    y=1,
+    yref="paper",
+    text="⚠️ Red Sea Freight & Energy Spike",
+    showarrow=False,
+    font=dict(size=10, color="red"),
+    bgcolor="#ffffff",
+)
+
+fig_line.add_vline(x="Q1-2026", line_width=1, line_dash="dash", line_color="orange")
+fig_line.add_annotation(
+    x="Q1-2026",
+    y=0.9,
+    yref="paper",
+    text="📑 Tariff & Import Duty Adjustments",
+    showarrow=False,
+    font=dict(size=10, color="orange"),
+    bgcolor="#ffffff",
+)
 
 fig_line.update_layout(
     xaxis=dict(title="Timeline", tickfont=dict(size=11)),
@@ -511,6 +544,7 @@ fig_map = px.scatter_map(
     hover_data={
         "Region": True,
         "Unit": True,
+        "Primary Driver": True,
         "Current Q2-2026 (Hist)": True,
         "Avg Price (Last 6M)": True,
         "6M Forecast Price": True,
