@@ -8,22 +8,36 @@ import streamlit as st
 
 st.set_page_config(layout="wide")
 
-# High legibility CSS & Visual Section Contrast
+# Custom CSS for fonts, white table backgrounds, black text, and light purple highlights
 st.markdown(
     """
     <style>
+    /* Heading Font Sizes */
     h1 { font-size: 2.2rem !important; }
     h2, h3 { font-size: 1.6rem !important; font-weight: 700 !important; }
     h4 { font-size: 1.3rem !important; font-weight: 600 !important; }
     .stCaption, p, div { font-size: 1.1rem !important; }
-    .stDataFrame, .stDataEditor { font-size: 1.05rem !important; }
     
+    /* Enforce White Background & Black Text for all Dataframes/Editors */
+    .stDataFrame, .stDataEditor {
+        font-size: 1.05rem !important;
+        background-color: #ffffff !important;
+        color: #000000 !important;
+    }
+    
+    div[data-testid="stTable"] table {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+    }
+
     /* Styled callout box for Quarterly Refresh */
     .refresh-box {
-        background-color: #f0f4f8;
+        background-color: #ffffff;
+        color: #000000;
         padding: 12px 18px;
         border-radius: 8px;
-        border-left: 5px solid #0066cc;
+        border: 1px solid #e0e0e0;
+        border-left: 5px solid #8a2be2;
         margin-bottom: 20px;
     }
     </style>
@@ -32,6 +46,7 @@ st.markdown(
 )
 
 st.title("US & Europe Commodity Price Tracker & Forecast")
+
 
 # Helper function to compute current Quarter & Year dynamically
 def get_current_quarter_info():
@@ -47,7 +62,7 @@ st.markdown(
     f"""
     <div class="refresh-box">
         <b>🗓️ Quarterly Data Status:</b> Active Quarter: <b>{current_q_label}</b> | Last Refreshed: <b>{last_updated_date}</b><br>
-        <span style="font-size:0.95rem; color:#555;">Data automatically re-indexes at the start of each calendar quarter. Click 'Refresh Data' in sidebar to pull latest benchmark feeds.</span>
+        <span style="font-size:0.95rem; color:#333333;">Data automatically re-indexes at the start of each calendar quarter. Click 'Refresh Data' in sidebar to pull latest benchmark feeds.</span>
     </div>
     """,
     unsafe_allow_html=True,
@@ -61,12 +76,11 @@ with st.sidebar:
         st.success("Quarterly benchmarks successfully refreshed!")
         st.rerun()
 
-# 1. Base dataset with explicit Data Sources
+# 1. Base dataset (Hub Location Removed)
 initial_commodities = [
     {
         "Commodity": "Coconut Oil",
         "Region": "Europe",
-        "Hub Location": "Rotterdam (EU Hub)",
         "lat": 51.9244,
         "lon": 4.4777,
         "Unit": "$/tonne",
@@ -76,7 +90,6 @@ initial_commodities = [
     {
         "Commodity": "Palm Oil",
         "Region": "Europe",
-        "Hub Location": "Hamburg (EU Hub)",
         "lat": 53.5511,
         "lon": 9.9937,
         "Unit": "$/tonne",
@@ -86,7 +99,6 @@ initial_commodities = [
     {
         "Commodity": "IPA (Isopropyl Alcohol)",
         "Region": "US",
-        "Hub Location": "Houston (US Gulf Coast)",
         "lat": 29.7604,
         "lon": -95.3698,
         "Unit": "$/kg",
@@ -96,7 +108,6 @@ initial_commodities = [
     {
         "Commodity": "Silicones",
         "Region": "US",
-        "Hub Location": "Midland, MI (US)",
         "lat": 43.6156,
         "lon": -84.2472,
         "Unit": "$/kg",
@@ -106,7 +117,6 @@ initial_commodities = [
     {
         "Commodity": "Silicones",
         "Region": "Europe",
-        "Hub Location": "Frankfurt (EU Hub)",
         "lat": 50.1109,
         "lon": 8.6821,
         "Unit": "$/kg",
@@ -116,7 +126,6 @@ initial_commodities = [
     {
         "Commodity": "Glycerin",
         "Region": "US",
-        "Hub Location": "Chicago (US Hub)",
         "lat": 41.8781,
         "lon": -87.6298,
         "Unit": "$/tonne",
@@ -168,7 +177,6 @@ def generate_price_history_and_forecast(df):
         record = {
             "Commodity": row["Commodity"],
             "Region": row["Region"],
-            "Hub Location": row["Hub Location"],
             "lat": row["lat"],
             "lon": row["lon"],
             "Unit": row["Unit"],
@@ -212,7 +220,6 @@ edited_input_df = st.data_editor(
         [
             "Commodity",
             "Region",
-            "Hub Location",
             "Unit",
             "Data Source",
             "Budgeted Price",
@@ -238,10 +245,10 @@ edited_input_df = st.data_editor(
 
 # Merge back edited input data
 df_full = df_base[
-    ["Commodity", "Region", "Hub Location", "lat", "lon", "Base_Price"]
+    ["Commodity", "Region", "lat", "lon", "Base_Price"]
 ].merge(
     edited_input_df,
-    on=["Commodity", "Region", "Hub Location"],
+    on=["Commodity", "Region"],
     how="left",
 )
 
@@ -257,7 +264,6 @@ with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         [
             "Commodity",
             "Region",
-            "Hub Location",
             "Unit",
             "Data Source",
             "Budgeted Price",
@@ -285,46 +291,41 @@ st.download_button(
 st.markdown("---")
 
 # -------------------------------------------------------------
-# Section 2: Historical Trends Table with Distinct Column Coloring
+# Section 2: Historical Trends Table with Light Purple Highlights
 # -------------------------------------------------------------
 st.subheader("2. 18-Month Quarterly Trends, 6M Average & 6M Forecast")
 st.caption(
-    "🎨 **Table Legend:** Historical Quarter columns are marked with **(Hist)** in neutral grey styling. Forecast & Budget columns display **Predictive Indicators**."
+    "🎨 **Table Styling:** Clean white background with black text. Forecast & Shift columns are highlighted in **light purple**."
 )
 
-# Apply Pandas Style formatting to color-code historical vs forecast columns
-styled_df = df_processed[
-    [
-        "Commodity",
-        "Region",
-        "Hub Location",
-        "Unit",
-        "Budgeted Price",
-        "Q1-2025 (Hist)",
-        "Q2-2025 (Hist)",
-        "Q3-2025 (Hist)",
-        "Q4-2025 (Hist)",
-        "Q1-2026 (Hist)",
-        "Current Q2-2026 (Hist)",
-        "Avg Price (Last 6M)",
-        "6M Forecast Price",
-        "Forecast Shift %",
-        "Variance vs Budget (%)",
-        "Negotiation Action",
+# Apply Pandas Style: White background, black text, light purple highlights for forecast columns
+styled_df = (
+    df_processed[
+        [
+            "Commodity",
+            "Region",
+            "Unit",
+            "Budgeted Price",
+            "Q1-2025 (Hist)",
+            "Q2-2025 (Hist)",
+            "Q3-2025 (Hist)",
+            "Q4-2025 (Hist)",
+            "Q1-2026 (Hist)",
+            "Current Q2-2026 (Hist)",
+            "Avg Price (Last 6M)",
+            "6M Forecast Price",
+            "Forecast Shift %",
+            "Variance vs Budget (%)",
+            "Negotiation Action",
+        ]
     ]
-].style.map(
-    lambda x: "background-color: #f7f9fa; color: #444;",
-    subset=[
-        "Q1-2025 (Hist)",
-        "Q2-2025 (Hist)",
-        "Q3-2025 (Hist)",
-        "Q4-2025 (Hist)",
-        "Q1-2026 (Hist)",
-        "Current Q2-2026 (Hist)",
-    ],
-).map(
-    lambda x: "background-color: #e6f2ff; font-weight: bold;",
-    subset=["6M Forecast Price", "Forecast Shift %"],
+    .style.map(
+        lambda x: "background-color: #ffffff; color: #000000;"
+    )
+    .map(
+        lambda x: "background-color: #f3e8ff; color: #000000; font-weight: bold;",
+        subset=["6M Forecast Price", "Forecast Shift %"],
+    )
 )
 
 st.dataframe(styled_df, use_container_width=True)
@@ -405,7 +406,7 @@ with col_chart:
             x=labels,
             y=df_processed["Raw_Forecast"],
             name="6M Forecast Price ($)",
-            marker_color="#E74C3C",
+            marker_color="#8A2BE2",  # Light/Royal Purple accent for forecast
         )
     )
 
@@ -439,7 +440,6 @@ with col_map:
         hover_name="Commodity",
         hover_data={
             "Region": True,
-            "Hub Location": True,
             "Unit": True,
             "Data Source": True,
             "Current Q2-2026 (Hist)": True,
