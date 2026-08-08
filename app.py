@@ -143,7 +143,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Initialize Session State Dataframe with Primary Drivers
+# Initialize Session State Dataframe for full persistence
 if "budget_df" not in st.session_state:
     initial_commodities = [
         {
@@ -155,7 +155,11 @@ if "budget_df" not in st.session_state:
             "Base_Price": 1650.0,
             "Budgeted Price": 1897.5,
             "Forecast_Shift_%": -5.0,
-            "Primary Driver": "Tariffs & Ocean Freight Surcharges",
+            "Primary Driver": "Freight Surcharges & Weather",
+            "Energy_Share_%": 10.0,
+            "Tariff_Share_%": 20.0,
+            "Freight_Share_%": 60.0,
+            "Unknown_Share_%": 10.0,
             "Data Source": "CME / Malayan Palm Oil Board (MPOB)",
         },
         {
@@ -167,7 +171,11 @@ if "budget_df" not in st.session_state:
             "Base_Price": 980.0,
             "Budgeted Price": 1127.0,
             "Forecast_Shift_%": -12.0,
-            "Primary Driver": "Agricultural Yields & Weather Shifts",
+            "Primary Driver": "Agricultural Yields",
+            "Energy_Share_%": 0.0,
+            "Tariff_Share_%": 10.0,
+            "Freight_Share_%": 80.0,
+            "Unknown_Share_%": 10.0,
             "Data Source": "Bursa Malaysia (KL CPO Futures Index)",
         },
         {
@@ -179,7 +187,11 @@ if "budget_df" not in st.session_state:
             "Base_Price": 1.45,
             "Budgeted Price": 1.67,
             "Forecast_Shift_%": 2.1,
-            "Primary Driver": "Geopolitical / Energy Shock (Crude Spike)",
+            "Primary Driver": "Geopolitical / Energy Shock",
+            "Energy_Share_%": 90.0,
+            "Tariff_Share_%": 5.0,
+            "Freight_Share_%": 0.0,
+            "Unknown_Share_%": 5.0,
             "Data Source": "ICIS Petrochemical Gulf Coast Index",
         },
         {
@@ -191,7 +203,11 @@ if "budget_df" not in st.session_state:
             "Base_Price": 3.80,
             "Budgeted Price": 4.37,
             "Forecast_Shift_%": -15.0,
-            "Primary Driver": "Energy Intensive Manufacturing Costs",
+            "Primary Driver": "Energy Intensive Costs",
+            "Energy_Share_%": 85.0,
+            "Tariff_Share_%": 0.0,
+            "Freight_Share_%": 10.0,
+            "Unknown_Share_%": 5.0,
             "Data Source": "S&P Global Platts Chemical Insights",
         },
         {
@@ -203,7 +219,11 @@ if "budget_df" not in st.session_state:
             "Base_Price": 4.10,
             "Budgeted Price": 4.71,
             "Forecast_Shift_%": 1.2,
-            "Primary Driver": "EU Energy Surcharges & Import Duties",
+            "Primary Driver": "EU Energy & Import Duties",
+            "Energy_Share_%": 70.0,
+            "Tariff_Share_%": 15.0,
+            "Freight_Share_%": 10.0,
+            "Unknown_Share_%": 5.0,
             "Data Source": "ICIS European Silicones Benchmark",
         },
         {
@@ -215,7 +235,11 @@ if "budget_df" not in st.session_state:
             "Base_Price": 820.0,
             "Budgeted Price": 943.0,
             "Forecast_Shift_%": -8.0,
-            "Primary Driver": "Baseline Inflation & Domestic Freight",
+            "Primary Driver": "Inflation & Domestic Transport",
+            "Energy_Share_%": 15.0,
+            "Tariff_Share_%": 0.0,
+            "Freight_Share_%": 75.0,
+            "Unknown_Share_%": 10.0,
             "Data Source": "USDA Oleochemical / Refined Glycerin Reports",
         },
     ]
@@ -267,6 +291,7 @@ def generate_price_history_and_forecast(df):
             "Negotiation Action": flag,
             "Data Source": row["Data Source"],
             "Raw_Budget": budget,
+            "Current_Price": q_prices[-1],
             "Budgeted Price": format_currency(budget),
             "Q1-2025 (Hist)": format_currency(q_prices[0]),
             "Q2-2025 (Hist)": format_currency(q_prices[1]),
@@ -280,15 +305,19 @@ def generate_price_history_and_forecast(df):
             "Forecast Shift %": f"{price_delta_pct:+.2f}%",
             "Raw_Forecast_Shift": price_delta_pct,
             "Variance vs Budget (%)": f"{variance_pct:+.2f}%",
+            "Energy_Share_%": row.get("Energy_Share_%", 0.0),
+            "Tariff_Share_%": row.get("Tariff_Share_%", 0.0),
+            "Freight_Share_%": row.get("Freight_Share_%", 0.0),
+            "Unknown_Share_%": row.get("Unknown_Share_%", 0.0),
         }
         history_data.append(record)
 
     return pd.DataFrame(history_data)
 
 
-# Section 1: Budget Entry & Assumptions
+# Section 1: Budget Entry
 st.subheader("1. Enter Budgeted Prices & Forecast Assumptions")
-st.caption("💡 **Editable Table:** Tap/click cells to edit target prices or forecast shifts.")
+st.caption("💡 **Editable Table:** Tap/click cells to edit target prices, forecast shifts, or cost drivers. Changes save automatically!")
 
 edited_data = st.data_editor(
     st.session_state["budget_df"][
@@ -299,6 +328,10 @@ edited_data = st.data_editor(
             "Primary Driver",
             "Budgeted Price",
             "Forecast_Shift_%",
+            "Energy_Share_%",
+            "Tariff_Share_%",
+            "Freight_Share_%",
+            "Unknown_Share_%",
         ]
     ],
     column_config={
@@ -315,14 +348,19 @@ edited_data = st.data_editor(
         ),
         "Primary Driver": st.column_config.TextColumn(
             "Primary Cost Driver",
-            help="Main cause driving price changes (e.g., Inflation, Geopolitical, Tariffs).",
+            help="Main cause driving price changes.",
         ),
+        "Energy_Share_%": st.column_config.NumberColumn("Energy Share (%)", format="%.1f%%"),
+        "Tariff_Share_%": st.column_config.NumberColumn("Tariff Share (%)", format="%.1f%%"),
+        "Freight_Share_%": st.column_config.NumberColumn("Freight Share (%)", format="%.1f%%"),
+        "Unknown_Share_%": st.column_config.NumberColumn("Unknown Share (%)", format="%.1f%%"),
     },
     use_container_width=True,
     num_rows="dynamic",
     key="editor_key",
 )
 
+# Save changes directly back into Streamlit Session State
 st.session_state["budget_df"].update(edited_data)
 
 df_processed = generate_price_history_and_forecast(st.session_state["budget_df"])
@@ -363,7 +401,7 @@ st.markdown("---")
 
 # Section 2: Full Table View
 st.subheader("2. 18-Month Historical Quarterly Trends & Forecasts")
-st.caption("Budgeted prices are in **light green**, Forecast columns in **light purple**, and Negotiation Actions call out **🟢 Opportunity to Lower Price** / **🔴 Risk of Higher Prices**.")
+st.caption("Budgeted prices are highlighted in **light green**, and Forecast & Shift columns are in **light purple**.")
 
 show_historical_quarters = st.checkbox("Show Historical Quarterly Columns (Q1-2025 to Current)", value=False)
 
@@ -443,32 +481,9 @@ for idx, row in df_processed.iterrows():
             y=values,
             mode="lines+markers",
             name=label,
-            hovertemplate=f"<b>{label}</b><br>Driver: {row['Primary Driver']}<br>Period: %{{x}}<br>Price: $%{{y:,.2f}}<extra></extra>",
+            hovertemplate=f"<b>{label}</b><br>Period: %{{x}}<br>Price: $%{{y:,.2f}}<extra></extra>",
         )
     )
-
-# Macro Driver Event Annotations on Line Chart
-fig_line.add_vline(x="Q3-2025", line_width=1, line_dash="dash", line_color="red")
-fig_line.add_annotation(
-    x="Q3-2025",
-    y=1,
-    yref="paper",
-    text="⚠️ Red Sea Freight & Energy Spike",
-    showarrow=False,
-    font=dict(size=10, color="red"),
-    bgcolor="#ffffff",
-)
-
-fig_line.add_vline(x="Q1-2026", line_width=1, line_dash="dash", line_color="orange")
-fig_line.add_annotation(
-    x="Q1-2026",
-    y=0.9,
-    yref="paper",
-    text="📑 Tariff & Import Duty Adjustments",
-    showarrow=False,
-    font=dict(size=10, color="orange"),
-    bgcolor="#ffffff",
-)
 
 fig_line.update_layout(
     xaxis=dict(title="Timeline", tickfont=dict(size=11)),
@@ -486,6 +501,49 @@ fig_line.update_layout(
 )
 
 st.plotly_chart(fig_line, use_container_width=True)
+
+# -------------------------------------------------------------
+# COST DRIVER TABLE: Share of Net Forecast Change (%)
+# -------------------------------------------------------------
+st.subheader("📊 Cost Driver Breakdown (% Share of Net Forecast Shift)")
+st.caption("Displays the percentage share of each driver toward the total net forecast shift (sums to 100%).")
+
+driver_contrib_df = df_processed[
+    [
+        "Commodity",
+        "Region",
+        "Forecast Shift %",
+        "Primary Driver",
+        "Energy_Share_%",
+        "Tariff_Share_%",
+        "Freight_Share_%",
+        "Unknown_Share_%",
+    ]
+].copy()
+
+driver_contrib_df["Energy & Raw Materials Share"] = driver_contrib_df["Energy_Share_%"].apply(lambda x: f"{x:.1f}%")
+driver_contrib_df["Tariffs & Trade Duties Share"] = driver_contrib_df["Tariff_Share_%"].apply(lambda x: f"{x:.1f}%")
+driver_contrib_df["Freight & Ocean Logistics Share"] = driver_contrib_df["Freight_Share_%"].apply(lambda x: f"{x:.1f}%")
+driver_contrib_df["Unknown / Other Factors Share"] = driver_contrib_df["Unknown_Share_%"].apply(lambda x: f"{x:.1f}%")
+driver_contrib_df["Total Driver Breakdown"] = driver_contrib_df.apply(
+    lambda r: f"{(r['Energy_Share_%'] + r['Tariff_Share_%'] + r['Freight_Share_%'] + r['Unknown_Share_%']):.1f}%", axis=1
+)
+
+display_driver_table = driver_contrib_df[
+    [
+        "Commodity",
+        "Region",
+        "Forecast Shift %",
+        "Primary Driver",
+        "Energy & Raw Materials Share",
+        "Tariffs & Trade Duties Share",
+        "Freight & Ocean Logistics Share",
+        "Unknown / Other Factors Share",
+        "Total Driver Breakdown",
+    ]
+]
+
+st.dataframe(display_driver_table, use_container_width=True)
 
 st.markdown("---")
 
@@ -544,7 +602,6 @@ fig_map = px.scatter_map(
     hover_data={
         "Region": True,
         "Unit": True,
-        "Primary Driver": True,
         "Current Q2-2026 (Hist)": True,
         "Avg Price (Last 6M)": True,
         "6M Forecast Price": True,
