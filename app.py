@@ -64,60 +64,41 @@ st.markdown(
 # AUTHENTICATION SYSTEM (STREAMLIT SECRETS)
 # -------------------------------------------------------------
 
-
 def check_user_access():
-    if "authenticated_user" not in st.session_state:
-        st.session_state["authenticated_user"] = None
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
 
-    if st.session_state["authenticated_user"] is not None:
+    if st.session_state["authenticated"]:
         return True
 
-    st.title("🔒 Restricted Access: Authorized Users Only")
-    st.caption("Enter your authorized email and password to view the price map.")
+    st.title("🔒 Restricted Access: Password Required")
+    st.caption("Enter the team access password to view the price map.")
 
     try:
-        authorized_users = st.secrets["users"]
+        shared_password = st.secrets["APP_PASSWORD"]
     except Exception:
         st.error(
-            "Secrets not configured properly! Please add [users] to Streamlit Cloud Secrets."
+            "Secrets not configured properly! Please add APP_PASSWORD to Streamlit Cloud Secrets."
         )
         return False
 
     with st.form("login_form"):
-        user_email = st.text_input("Email Address").strip().lower()
-        user_pass = st.text_input("Password", type="password")
+        user_pass = st.text_input("Access Password", type="password")
         submit_button = st.form_submit_button("Log In")
 
         if submit_button:
-            if (
-                user_email in authorized_users
-                and authorized_users[user_email] == user_pass
-            ):
-                st.session_state["authenticated_user"] = user_email
+            if user_pass == shared_password:
+                st.session_state["authenticated"] = True
                 st.success("Authentication successful!")
                 st.rerun()
             else:
-                st.error("Invalid email address or password.")
+                st.error("Invalid password. Access denied.")
 
     return False
 
 
 if not check_user_access():
     st.stop()
-
-with st.sidebar:
-    st.markdown(f"👤 Logged in as: **{st.session_state['authenticated_user']}**")
-    if st.button("🚪 Log Out"):
-        st.session_state["authenticated_user"] = None
-        st.rerun()
-
-    st.markdown("---")
-    st.header("⚙️ Data Refresh Controls")
-    if st.button("🔄 Force Quarterly Data Refresh"):
-        st.cache_data.clear()
-        st.success("Quarterly benchmarks successfully refreshed!")
-        st.rerun()
-
 # -------------------------------------------------------------
 # MAIN APPLICATION CONTENT
 # -------------------------------------------------------------
