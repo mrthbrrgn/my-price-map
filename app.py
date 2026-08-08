@@ -76,7 +76,7 @@ with st.sidebar:
         st.success("Quarterly benchmarks successfully refreshed!")
         st.rerun()
 
-# 1. Base dataset (Hub Location Removed)
+# 1. Base dataset
 initial_commodities = [
     {
         "Commodity": "Coconut Oil",
@@ -207,7 +207,7 @@ df_base["Budgeted Price"] = df_base["Base_Price"] * 0.85
 df_base["Forecast_Shift_%"] = [8.5, -2.0, 12.1, 1.8, 3.2, -8.0]
 
 # -------------------------------------------------------------
-# Section 1: Budget Entry & Excel Export
+# Section 1: Budget Entry & Excel Export (Data Source Removed Here)
 # -------------------------------------------------------------
 
 st.subheader("1. Enter Budgeted Prices & Forecast Assumptions")
@@ -221,7 +221,6 @@ edited_input_df = st.data_editor(
             "Commodity",
             "Region",
             "Unit",
-            "Data Source",
             "Budgeted Price",
             "Forecast_Shift_%",
         ]
@@ -245,10 +244,10 @@ edited_input_df = st.data_editor(
 
 # Merge back edited input data
 df_full = df_base[
-    ["Commodity", "Region", "lat", "lon", "Base_Price"]
+    ["Commodity", "Region", "lat", "lon", "Base_Price", "Data Source"]
 ].merge(
     edited_input_df,
-    on=["Commodity", "Region"],
+    on=["Commodity", "Region", "Unit"],
     how="left",
 )
 
@@ -298,13 +297,13 @@ st.caption(
     "🎨 **Table Styling:** Clean white background with black text. Forecast & Shift columns are highlighted in **light purple**."
 )
 
-# Apply Pandas Style: White background, black text, light purple highlights for forecast columns
 styled_df = (
     df_processed[
         [
             "Commodity",
             "Region",
             "Unit",
+            "Data Source",
             "Budgeted Price",
             "Q1-2025 (Hist)",
             "Q2-2025 (Hist)",
@@ -406,7 +405,7 @@ with col_chart:
             x=labels,
             y=df_processed["Raw_Forecast"],
             name="6M Forecast Price ($)",
-            marker_color="#8A2BE2",  # Light/Royal Purple accent for forecast
+            marker_color="#8A2BE2",
         )
     )
 
