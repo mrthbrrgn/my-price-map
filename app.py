@@ -183,8 +183,8 @@ def generate_price_history_and_forecast(df):
             "lat": row["lat"],
             "lon": row["lon"],
             "Unit": row["Unit"],
-            "Negotiation Action": flag,  # Swapped Position
-            "Data Source": row["Data Source"],  # Swapped Position
+            "Negotiation Action": flag,
+            "Data Source": row["Data Source"],
             "Raw_Budget": budget,
             "Budgeted Price": format_currency(budget),
             "Q1-2025 (Hist)": format_currency(q_prices[0]),
@@ -271,8 +271,8 @@ with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             "6M Forecast Price",
             "Forecast Shift %",
             "Variance vs Budget (%)",
-            "Negotiation Action",  # Swapped
-            "Data Source",  # Swapped
+            "Negotiation Action",
+            "Data Source",
         ]
     ].to_excel(writer, sheet_name="Price_Trends", index=False)
 
@@ -285,50 +285,49 @@ st.download_button(
 
 st.markdown("---")
 
-# Section 2: Collapsible Quarterly Trends Table
-with st.expander("📊 View 18-Month Historical Quarterly Trends & Forecasts (Tap to Expand)", expanded=False):
-    st.caption("Forecast & Shift columns are highlighted in **light purple**.")
+# Section 2: Non-Collapsible Full Table View
+st.subheader("2. 18-Month Historical Quarterly Trends & Forecasts")
+st.caption("Forecast & Shift columns are highlighted in **light purple**.")
 
-    # Toggle switch to show/hide historical quarterly columns to prevent horizontal scrolling
-    show_historical_quarters = st.checkbox("Show Historical Quarterly Columns (Q1-2025 to Current)", value=False)
+# Checkbox directly on page to toggle quarterly columns on/off
+show_historical_quarters = st.checkbox("Show Historical Quarterly Columns (Q1-2025 to Current)", value=False)
 
-    # Core base columns always displayed
-    base_cols = ["Commodity", "Region", "Unit", "Budgeted Price"]
-    
-    # Historical columns toggled on/off
-    hist_cols = [
-        "Q1-2025 (Hist)",
-        "Q2-2025 (Hist)",
-        "Q3-2025 (Hist)",
-        "Q4-2025 (Hist)",
-        "Q1-2026 (Hist)",
-        "Current Q2-2026 (Hist)",
-    ] if show_historical_quarters else []
+base_cols = ["Commodity", "Region", "Unit", "Budgeted Price"]
 
-    # Summary and Swapped columns always displayed
-    summary_cols = [
-        "Avg Price (Last 6M)",
-        "6M Forecast Price",
-        "Forecast Shift %",
-        "Variance vs Budget (%)",
-        "Negotiation Action",  # Swapped
-        "Data Source",  # Swapped
-    ]
+hist_cols = [
+    "Q1-2025 (Hist)",
+    "Q2-2025 (Hist)",
+    "Q3-2025 (Hist)",
+    "Q4-2025 (Hist)",
+    "Q1-2026 (Hist)",
+    "Current Q2-2026 (Hist)",
+] if show_historical_quarters else []
 
-    selected_display_cols = base_cols + hist_cols + summary_cols
+summary_cols = [
+    "Avg Price (Last 6M)",
+    "6M Forecast Price",
+    "Forecast Shift %",
+    "Variance vs Budget (%)",
+    "Negotiation Action",
+    "Data Source",
+]
 
-    styled_df = (
-        df_processed[selected_display_cols]
-        .style.map(
-            lambda x: "background-color: #ffffff; color: #000000;"
-        )
-        .map(
-            lambda x: "background-color: #f3e8ff; color: #000000; font-weight: bold;",
-            subset=["6M Forecast Price", "Forecast Shift %"],
-        )
+selected_display_cols = base_cols + hist_cols + summary_cols
+
+styled_df = (
+    df_processed[selected_display_cols]
+    .style.map(
+        lambda x: "background-color: #ffffff; color: #000000;"
     )
+    .map(
+        lambda x: "background-color: #f3e8ff; color: #000000; font-weight: bold;",
+        subset=["6M Forecast Price", "Forecast Shift %"],
+    )
+)
 
-    st.dataframe(styled_df, use_container_width=True)
+st.dataframe(styled_df, use_container_width=True)
+
+st.markdown("---")
 
 # Section 3: Charts & Map
 st.markdown("#### 📈 Price Trend Trajectory (18 Months + 6M Forecast)")
@@ -440,8 +439,8 @@ fig_map = px.scatter_map(
         "6M Forecast Price": True,
         "Budgeted Price": True,
         "Variance vs Budget (%)": True,
-        "Negotiation Action": True,  # Swapped
-        "Data Source": True,  # Swapped
+        "Negotiation Action": True,
+        "Data Source": True,
         "Raw_Forecast_Shift": False,
     },
     map_style="open-street-map",
