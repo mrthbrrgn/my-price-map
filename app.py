@@ -20,10 +20,18 @@ st.markdown(
     h4 { font-size: 1.1rem !important; font-weight: 600 !important; }
     .stCaption, p, div { font-size: 1.0rem !important; }
     
+    /* Enforce White Background & Black Text for all Dataframes/Editors */
     .stDataFrame, .stDataEditor {
         font-size: 0.95rem !important;
         background-color: #ffffff !important;
         color: #000000 !important;
+    }
+    
+    /* Wrap Table Header Text & Auto-fit */
+    div[data-testid="stTable"] th, .stDataFrame th, div[data-column-header] {
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        text-align: center !important;
     }
     
     div[data-testid="stTable"] table {
@@ -225,11 +233,11 @@ def generate_price_history_and_forecast(df):
         budget = row["Budgeted Price"]
         variance_pct = ((forecast_price - budget) / budget) * 100 if budget > 0 else 0.0
 
-        # Dynamic Negotiation Callouts (Green for lower price opportunity, Red for higher cost risk)
+        # Dynamic Negotiation Callouts with requested exact labels
         if variance_pct <= -10.0:
-            flag = "🟢 Renegotiate Opportunity (Forecast ≤ -10% vs Budget)"
+            flag = "🟢 Opportunity to Lower Price"
         elif variance_pct >= 10.0:
-            flag = "🔴 Risk: Higher Market Price (Forecast ≥ +10% vs Budget)"
+            flag = "🔴 Risk of Higher Prices"
         else:
             flag = "✅ Within Target Range"
 
@@ -343,7 +351,7 @@ st.markdown("---")
 
 # Section 2: Full Table View
 st.subheader("2. 18-Month Historical Quarterly Trends & Forecasts")
-st.caption("Budgeted prices are in **light green**, Forecast columns in **light purple**, and Negotiation Actions call out **Green (Lower Price Opportunity)** / **Red (Higher Cost Risk)**.")
+st.caption("Budgeted prices are in **light green**, Forecast columns in **light purple**, and Negotiation Actions call out **🟢 Opportunity to Lower Price** / **🔴 Risk of Higher Prices**.")
 
 show_historical_quarters = st.checkbox("Show Historical Quarterly Columns (Q1-2025 to Current)", value=False)
 
@@ -384,8 +392,8 @@ styled_df = (
     )
     .map(
         lambda val: (
-            "background-color: #fce8e6; color: #c5221f; font-weight: bold;" if "Higher" in str(val) or "Risk" in str(val)
-            else "background-color: #e6f4ea; color: #137333; font-weight: bold;" if "Renegotiate" in str(val) or "Lower" in str(val)
+            "background-color: #fce8e6; color: #c5221f; font-weight: bold;" if "Risk of Higher Prices" in str(val)
+            else "background-color: #e6f4ea; color: #137333; font-weight: bold;" if "Opportunity to Lower Price" in str(val)
             else "background-color: #ffffff; color: #000000;"
         ),
         subset=["Negotiation Action"],
