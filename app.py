@@ -225,7 +225,6 @@ def generate_price_history_and_forecast(df):
         budget = row["Budgeted Price"]
         variance_pct = ((forecast_price - budget) / budget) * 100 if budget > 0 else 0.0
 
-        # UPDATED LOGIC: Trigger renegotiation when forecast is <= -10% vs budget
         if variance_pct <= -10.0:
             flag = "⚠️ Renegotiate (Forecast ≤ -10% vs Budget)"
         elif variance_pct >= 10.0:
@@ -261,7 +260,6 @@ def generate_price_history_and_forecast(df):
     return pd.DataFrame(history_data)
 
 
-# Adjusted initial sample budget prices to demonstrate the renegotiation triggers
 df_base["Budgeted Price"] = df_base["Base_Price"] * 1.15
 df_base["Forecast_Shift_%"] = [-5.0, -12.0, 2.1, -15.0, 1.2, -8.0]
 
@@ -344,7 +342,7 @@ st.markdown("---")
 
 # Section 2: Full Table View
 st.subheader("2. 18-Month Historical Quarterly Trends & Forecasts")
-st.caption("Forecast & Shift columns are highlighted in **light purple**.")
+st.caption("Budgeted prices are highlighted in **light green**, and Forecast & Shift columns are in **light purple**.")
 
 show_historical_quarters = st.checkbox("Show Historical Quarterly Columns (Q1-2025 to Current)", value=False)
 
@@ -374,6 +372,10 @@ styled_df = (
     df_processed[selected_display_cols]
     .style.map(
         lambda x: "background-color: #ffffff; color: #000000;"
+    )
+    .map(
+        lambda x: "background-color: #e6f4ea; color: #000000; font-weight: bold;",
+        subset=["Budgeted Price"],
     )
     .map(
         lambda x: "background-color: #f3e8ff; color: #000000; font-weight: bold;",
@@ -447,7 +449,7 @@ fig_bar.add_trace(
         x=labels,
         y=df_processed["Raw_Budget"],
         name="Budgeted Price ($)",
-        marker_color="#4A90E2",
+        marker_color="#34A853",
     )
 )
 
