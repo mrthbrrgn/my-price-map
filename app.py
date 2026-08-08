@@ -242,12 +242,12 @@ edited_input_df = st.data_editor(
     num_rows="dynamic",
 )
 
-# Merge back edited input data
+# FIXED: Merging purely on Commodity & Region prevents KeyError
 df_full = df_base[
     ["Commodity", "Region", "lat", "lon", "Base_Price", "Data Source"]
 ].merge(
-    edited_input_df,
-    on=["Commodity", "Region", "Unit"],
+    edited_input_df[["Commodity", "Region", "Unit", "Budgeted Price", "Forecast_Shift_%"]],
+    on=["Commodity", "Region"],
     how="left",
 )
 
