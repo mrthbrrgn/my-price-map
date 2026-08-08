@@ -1,12 +1,13 @@
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 st.set_page_config(layout="wide")
 st.title("US & Europe Commodity Price Tracker & Forecast")
 
-# 1. Base dataset for US and Europe Hubs with Specified Units
+# 1. Base dataset for US and Europe Hubs
 initial_commodities = [
     {
         "Commodity": "Coconut Oil",
@@ -67,9 +68,9 @@ initial_commodities = [
 df_base = pd.DataFrame(initial_commodities)
 
 
-# 2. Helper function to generate 18-month historical trends and average of last 6 months
+# 2. Helper function to generate 18-month historical trends, averages, and forecasts
 def generate_price_history_and_forecast(df):
-    np.random.seed(42)  # Consistent trend simulation
+    np.random.seed(42)
 
     quarters = ["Q1-2025", "Q2-2025", "Q3-2025", "Q4-2025", "Q1-2026", "Q2-2026"]
 
@@ -81,10 +82,7 @@ def generate_price_history_and_forecast(df):
             for _ in quarters
         ]
 
-        # Calculate Average Price of Last 6 Months (Q1-2026 and Q2-2026)
         avg_last_6m = round((q_prices[-2] + q_prices[-1]) / 2, 2)
-
-        # 6-Month Forecast calculated from current price
         forecast_price = round(q_prices[-1] * (1 + row["Forecast_Shift_%"] / 100), 2)
         price_delta_pct = round(
             ((forecast_price - q_prices[-1]) / q_prices[-1]) * 100, 2
@@ -126,11 +124,8 @@ df_base["Forecast_Shift_%"] = [4.5, -2.0, 6.1, 1.8, 3.2, -4.0]
 # App Layout & User Inputs
 # -------------------------------------------------------------
 
-# Section 1: Budget Entry & Forecast Controls
 st.subheader("1. Enter Budgeted Prices & Forecast Assumptions")
-st.caption(
-    "Set your internal budgeted prices and forecasted price shifts for US and Europe locations."
-)
+st.caption("Set internal budgeted prices and forecast shifts for US/EU hubs.")
 
 edited_input_df = st.data_editor(
     df_base[
@@ -147,7 +142,6 @@ edited_input_df = st.data_editor(
     num_rows="dynamic",
 )
 
-# Merge edited inputs back with base dataset
 df_full = df_base[
     ["Commodity", "Region", "Hub Location", "lat", "lon", "Base_Price"]
 ].merge(
@@ -157,13 +151,13 @@ df_full = df_base[
 df_full["Budgeted Price"] = df_full["Budgeted Price"].fillna(1.0)
 df_full["Forecast_Shift_%"] = df_full["Forecast_Shift_%"].fillna(0.0)
 
-# Process trends & metrics
 df_processed = generate_price_history_and_forecast(df_full)
 
 st.markdown("---")
 
-# Section 2: Historical Trends, 6-Month Average & 6-Month Forecast Table
-st.subheader("2. 18-Month Quarterly Trends, 6M Average & 6M Forecast")
+# Section 2: Historical Trends Table & Interactive Line Chart
+st.subheader("2. 18-Month Quarterly Trends & 6M Forecast")
+
 st.dataframe(
     df_processed[
         [
@@ -187,30 +181,111 @@ st.dataframe(
     use_container_width=True,
 )
 
-# Section 3: Interactive Spatial Heatmap
-st.subheader("3. US & Europe Predictive Map")
+# Graph 1: Historical Trend & Forecast Line Chart
+st.markdown("#### 📈 Price Trend Trajectory (Past 18 Months + 6M Forecast)")
 
-fig = px.scatter_map(
-    df_processed,
-    lat="lat",
-    lon="lon",
-    color="Forecast Shift %",
-    size=df_processed["Forecast Shift %"].abs() + 2,
-    color_continuous_scale="RdYlGn_r",
-    hover_name="Commodity",
-    hover_data={
-        "Region": True,
-        "Hub Location": True,
-        "Unit": True,
-        "Current (Q2-2026)": ":.2f",
-        "Avg Price (Last 6M)": ":.2f",
-        "6M Forecast Price": ":.2f",
-        "Budgeted Price": ":.2f",
-        "Variance vs Budget (%)": ":.2f%",
-    },
-    map_style="open-street-map",
-    zoom=2,
-    center={"lat": 42.0, "lon": -40.0},
+time_cols = [
+    "Q1-2025",
+    "Q2-2025",
+    "Q3-2025",
+    "Q4-2025",
+    "Q1-2026",
+    "Current (Q2-2026)",
+    "6M Forecast Price",
+]
+
+fig_line = go.Figure()
+
+for idx, row in df_processed.iterrows():
+    label = f"{row['Commodity']} ({row['Region']} - {row['Unit']})"
+    values = [row[col] for col in time_cols]
+
+    fig_line.add_trace(
+        go.Scatter(
+            x=time_cols,
+            y=values,
+            mode="lines+markers",
+            name=label,
+            hovertemplate=f"<b>{label}</b><br>Period: %{{x}}<br>Price: $%{{y:.2f}}<extra></extra>",
+        )
+    )
+
+fig_line.update_layout(
+    xaxis_title="Timeline (Quarters to 6M Forecast)",
+    yaxis_title="Price",
+    hovermode="x unified",
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    margin=dict(l=20, r=20, t=40, b=20),
 )
-fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
-st.plotly_chart(fig, use_container_width=True)
+
+st.plotly_chart(fig_line, use_container_width=True)
+
+st.markdown("---")
+
+# Section 3: Budget Variance Bar Chart & Map
+col_chart, col_map = st.columns([1, 1])
+
+with col_chart:
+    st.subheader("3. Budget vs Forecasted Price Comparison")
+
+    fig_bar = go.Figure()
+
+    labels = [
+        f"{r['Commodity']} ({r['Region']})" for _, r in df_processed.iterrows()
+    ]
+
+    fig_bar.add_trace(
+        go.Bar(
+            x=labels,
+            y=df_processed["Budgeted Price"],
+            name="Budgeted Price",
+            marker_color="#4A90E2",
+        )
+    )
+
+    fig_bar.add_trace(
+        go.Bar(
+            x=labels,
+            y=df_processed["6M Forecast Price"],
+            name="6M Forecast Price",
+            marker_color="#E74C3C",
+        )
+    )
+
+    fig_bar.update_layout(
+        barmode="group",
+        xaxis_title="Commodity & Region",
+        yaxis_title="Price",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=20, r=20, t=40, b=20),
+    )
+
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+with col_map:
+    st.subheader("4. US & Europe Predictive Map")
+
+    fig_map = px.scatter_map(
+        df_processed,
+        lat="lat",
+        lon="lon",
+        color="Forecast Shift %",
+        size=df_processed["Forecast Shift %"].abs() + 3,
+        color_continuous_scale="RdYlGn_r",
+        hover_name="Commodity",
+        hover_data={
+            "Region": True,
+            "Hub Location": True,
+            "Unit": True,
+            "Current (Q2-2026)": ":.2f",
+            "Avg Price (Last 6M)": ":.2f",
+            "6M Forecast Price": ":.2f",
+            "Budgeted Price": ":.2f",
+            "Variance vs Budget (%)": ":.2f%",
+        },
+        map_style="open-street-map",
+        zoom=2,
+        center={"lat": 42.0, "lon": -40.0},
+    )
+    fig_map.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
+    st.plotly_chart(fig_map, use_container_width=True)
