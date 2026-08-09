@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 st.set_page_config(
-    page_title="Price Tracker",
+    page_title="Price Tracker & Pre-Negotiation Portal",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -125,49 +125,41 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("---")
-    st.header("📖 Usage Instructions")
+    st.header("📖 Pre-Negotiation Playbook")
     st.markdown(
         """
-        1. **Edit Assumptions (Section 1):** Click inside table cells to update **Company Budget Targets** or **2026/2027 Market Shifts (%)**.
-        2. **Automatic Savings:** Any edits automatically update all downstream tables, trajectory charts, and maps.
-        3. **Review Negotiation Triggers:**
-           * 🟢 **Opportunity:** Market price <= 10% below budget.
-           * 🔴 **Risk:** Market price >= 10% above budget.
-        4. **Export Data:** Click the **Export Excel** button to download full comparison sheets.
+        1. **Input Provider Quotes:** Enter your supplier's **Actual Provider Price ($)** in Section 1.
+        2. **Compare vs Benchmark:** Evaluate the delta between provider quotes and external market benchmarks.
+        3. **Leverage Dual-Sourcing:** Split strategic volume (e.g., 70/30) to test spot price leverage.
+        4. **Unbundle Freight:** Isolate base commodity price from ocean/inland logistics surcharges.
         """
     )
 
     st.markdown("---")
     with st.expander("📐 Calculation Formulas"):
-        st.markdown("**1. 2026 Market Projection ($):**")
+        st.markdown("**1. Provider vs. Benchmark Delta (%):**")
         st.latex(
-            r"\text{Current Q2 Price} \times \left(1 + \frac{\text{2026 Shift"
-            r" \%}}{100}\right)"
+            r"\left(\frac{\text{Actual Provider Price} - \text{Market"
+            r" Benchmark}}{\text{Market Benchmark}}\right) \times 100"
         )
 
-        st.markdown("**2. 2027 Market Projection ($):**")
+        st.markdown("**2. Blended Dual-Sourcing Price ($):**")
         st.latex(
-            r"\text{2026 Projection} \times \left(1 + \frac{\text{2027 Shift"
-            r" \%}}{100}\right)"
+            r"(\text{Primary Price} \times \text{Vol \%}) + (\text{Secondary"
+            r" Price} \times \text{Vol \%})"
         )
 
-        st.markdown("**3. Budget vs Measure Variance (%):**")
+        st.markdown("**3. Unbundled Base Price ($):**")
         st.latex(
-            r"\left(\frac{\text{Company Budget Target} - \text{Benchmark"
-            r" Price}}{\text{Benchmark Price}}\right) \times 100"
-        )
-
-        st.markdown("**4. Forecast Shift (%):**")
-        st.latex(
-            r"\left(\frac{\text{2026 Projection} - \text{Current Q2"
-            r" Price}}{\text{Current Q2 Price}}\right) \times 100"
+            r"\text{Actual Provider Price} - (\text{Inland Freight} +"
+            r" \text{Ocean Surcharge})"
         )
 
 # -------------------------------------------------------------
 # MAIN APPLICATION CONTENT
 # -------------------------------------------------------------
 
-st.title("US & Europe Commodity Price Tracker & Forecast")
+st.title("US & Europe Commodity Price Tracker & Pre-Negotiation Portal")
 
 
 def get_current_quarter_info():
@@ -195,10 +187,10 @@ def format_currency(val):
     return f"${val:,.2f}"
 
 
-def format_budget_vs_measure(budget, measure):
-    if measure <= 0 or pd.isna(budget) or pd.isna(measure):
+def format_pct_diff(val, base):
+    if base <= 0 or pd.isna(val) or pd.isna(base):
         return "0.00%"
-    diff_pct = ((budget - measure) / measure) * 100
+    diff_pct = ((val - base) / base) * 100
     return f"{diff_pct:+.2f}%"
 
 
@@ -328,13 +320,16 @@ def build_initial_dataset():
         item["Current_Q2_2026"] = q2_26
         item["YTD_2026_Avg"] = ytd_2026_avg
         item["Company_Budget_Price"] = round(avg_2025 * 1.05, 2)
+        
+        # Default Actual Provider Price (starts slightly above spot)
+        item["Actual_Provider_Price"] = round(q2_26 * 1.04, 2)
 
         processed_list.append(item)
 
     return pd.DataFrame(processed_list)
 
 
-if "budget_df" not in st.session_state or "YTD_2026_Avg" not in st.session_state["budget_df"].columns:
+if "budget_df" not in st.session_state or "Actual_Provider_Price" not in st.session_state["budget_df"].columns:
     st.session_state["budget_df"] = build_initial_dataset()
 
 
@@ -344,11 +339,11 @@ def generate_price_history_and_forecast(df):
         base_avg_2025 = row.get("Base_Price_2025_Avg", row.get("Seed_Price", 100.0))
         ytd_avg_2026 = row.get("YTD_2026_Avg", base_avg_2025)
         current_q = row.get("Current_Q2_2026", base_avg_2025)
+        actual_provider = row.get("Actual_Provider_Price", current_q)
 
         shift_2026 = row.get("Forecast_Shift_%", 0.0)
         shift_2027 = row.get("Projection_2027_Shift_%", 2.0)
 
-        # Market Projections
         proj_2026 = round(current_q * (1 + shift_2026 / 100), 2)
         price_delta_pct = round(((proj_2026 - current_q) / current_q) * 100, 2)
 
@@ -359,12 +354,12 @@ def generate_price_history_and_forecast(df):
             ((proj_2026 - budget) / budget) * 100 if budget > 0 else 0.0
         )
 
-        if variance_pct <= -10.0:
+        if actual_provider > proj_2026:
             flag = "🟢 Opportunity to Lower Price"
-        elif variance_pct >= 10.0:
-            flag = "🔴 Risk of Higher Prices"
+        elif actual_provider > budget:
+            flag = "🔴 Risk: Provider Over Budget"
         else:
-            flag = "✅ Within Target Range"
+            flag = "✅ Competitive Provider Price"
 
         record = {
             "Commodity": row["Commodity"],
@@ -377,6 +372,7 @@ def generate_price_history_and_forecast(df):
             "Data Source": row.get("Data Source", "Industry Benchmark"),
             "Raw_Budget": budget,
             "Current_Price": current_q,
+            "Raw_Actual_Provider": actual_provider,
             "Company_Budget_Price": budget,
             "Base_Price_2025_Avg": base_avg_2025,
             "YTD_2026_Avg": ytd_avg_2026,
@@ -385,19 +381,18 @@ def generate_price_history_and_forecast(df):
             "Projection_2027_Shift_%": shift_2027,
             "2026_Projection_Val": proj_2026,
             "2027_Projection_Val": proj_2027,
+            "Actual Provider Price ($)": format_currency(actual_provider),
             "Company Budget Target ($)": format_currency(budget),
             "Baseline (2025 Avg Price)": format_currency(base_avg_2025),
-            "Budget vs 2025 Avg (%)": format_budget_vs_measure(budget, base_avg_2025),
             "Current YTD 2026 Avg Price": format_currency(ytd_avg_2026),
-            "Budget vs YTD 2026 (%)": format_budget_vs_measure(budget, ytd_avg_2026),
             "Current Q2-2026 Price": format_currency(current_q),
-            "Budget vs Current Q2 (%)": format_budget_vs_measure(budget, current_q),
+            "Provider vs Budget (%)": format_pct_diff(actual_provider, budget),
+            "Provider vs Q2 Market (%)": format_pct_diff(actual_provider, current_q),
+            "Provider vs 2026 Proj (%)": format_pct_diff(actual_provider, proj_2026),
             "2026 Market Shift (%)": f"{shift_2026:+.2f}%",
             "2026 Market Projection ($)": format_currency(proj_2026),
-            "Budget vs 2026 Proj (%)": format_budget_vs_measure(budget, proj_2026),
             "2027 Market Shift (%)": f"{shift_2027:+.2f}%",
             "2027 Market Projection ($)": format_currency(proj_2027),
-            "Budget vs 2027 Proj (%)": format_budget_vs_measure(budget, proj_2027),
             "Q1-2025 (Hist)": format_currency(row.get("Q1_2025", base_avg_2025)),
             "Q2-2025 (Hist)": format_currency(row.get("Q2_2025", base_avg_2025)),
             "Q3-2025 (Hist)": format_currency(row.get("Q3_2025", base_avg_2025)),
@@ -418,21 +413,39 @@ def generate_price_history_and_forecast(df):
     return pd.DataFrame(history_data)
 
 
-# Section 1: Budget Entry & Assumptions
-st.subheader("1. Enter Company Budget & Market Projection Assumptions")
-st.caption("💡 **Company Budget Comparisons:** Compare your budget directly against 2025 baselines, YTD 2026 averages, current Q2 prices, and projected 2026/2027 market shifts.")
+# -------------------------------------------------------------
+# SECTION 1: BUDGET & ACTUAL PROVIDER PRICE ENTRY
+# -------------------------------------------------------------
+st.subheader("1. Enter Actual Provider Quotes, Budget & Forecast Assumptions")
+st.caption("💡 **Pre-Negotiation Entry:** Type in your vendor's **Actual Provider Price ($)** to compare quotes directly against budget and benchmark projections.")
 
 calc_df = generate_price_history_and_forecast(st.session_state["budget_df"])
 st.session_state["budget_df"]["2026_Projection_Val"] = calc_df["2026_Projection_Val"]
 st.session_state["budget_df"]["2027_Projection_Val"] = calc_df["2027_Projection_Val"]
 
+# --- VISUAL 1: PORTFOLIO EXECUTIVE KPI CARDS ---
+kpi_opps = sum(1 for f in calc_df["Negotiation Action"] if "Opportunity" in f)
+kpi_risks = sum(1 for f in calc_df["Negotiation Action"] if "Risk" in f)
+avg_provider_vs_spot = calc_df.apply(
+    lambda r: ((r["Raw_Actual_Provider"] - r["Current_Price"]) / r["Current_Price"]) * 100, axis=1
+).mean()
+
+kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
+with kpi_col1:
+    st.metric("🎯 Avg Provider vs. Spot Benchmark", f"{avg_provider_vs_spot:+.2f}%", delta=f"{avg_provider_vs_spot:+.2f}%", delta_color="inverse")
+with kpi_col2:
+    st.metric("🟢 Negotiation Opportunities", f"{kpi_opps} Commodities", help="Provider quotes higher than projected market benchmark.")
+with kpi_col3:
+    st.metric("🔴 Over-Budget Cost Risks", f"{kpi_risks} Commodities", help="Provider quotes exceeding company target budget.")
+
+st.markdown("<br>", unsafe_allow_html=True)
+
 editor_display_cols = [
     "Commodity",
     "Region",
     "Unit",
+    "Actual_Provider_Price",
     "Company_Budget_Price",
-    "Base_Price_2025_Avg",
-    "YTD_2026_Avg",
     "Current_Q2_2026",
     "2026_Projection_Val",
     "Forecast_Shift_%",
@@ -443,50 +456,40 @@ editor_display_cols = [
 edited_df = st.data_editor(
     st.session_state["budget_df"][editor_display_cols],
     column_config={
+        "Actual_Provider_Price": st.column_config.NumberColumn(
+            "Actual Provider Price ($)",
+            help="Current price charged by your provider.",
+            format="$%,.2f",
+            min_value=0,
+        ),
         "Company_Budget_Price": st.column_config.NumberColumn(
             "Company Budget Target ($)",
             help="Company's target budget.",
             format="$%,.2f",
             min_value=0,
         ),
-        "Base_Price_2025_Avg": st.column_config.NumberColumn(
-            "Baseline (2025 Avg Price)",
-            help="Average price across 2025.",
-            format="$%,.2f",
-            disabled=True,
-        ),
-        "YTD_2026_Avg": st.column_config.NumberColumn(
-            "Current YTD 2026 Avg Price",
-            help="Year-to-date average price for 2026.",
-            format="$%,.2f",
-            disabled=True,
-        ),
         "Current_Q2_2026": st.column_config.NumberColumn(
-            "Current Q2-2026 Price",
-            help="Latest active quarter spot benchmark price.",
+            "Current Q2-2026 Spot ($)",
+            help="Active quarter spot benchmark.",
             format="$%,.2f",
             disabled=True,
         ),
         "2026_Projection_Val": st.column_config.NumberColumn(
             "2026 Market Projection ($)",
-            help="Calculated market projection for 2026.",
             format="$%,.2f",
             disabled=True,
         ),
         "Forecast_Shift_%": st.column_config.NumberColumn(
             "2026 Market Shift (%)",
-            help="Expected percentage market shift for 2026.",
             format="%.2f%%",
         ),
         "2027_Projection_Val": st.column_config.NumberColumn(
             "2027 Market Projection ($)",
-            help="Calculated market projection for 2027.",
             format="$%,.2f",
             disabled=True,
         ),
         "Projection_2027_Shift_%": st.column_config.NumberColumn(
             "2027 Market Shift (%)",
-            help="Expected percentage market shift for 2027 vs 2026.",
             format="%.2f%%",
         ),
     },
@@ -503,27 +506,23 @@ df_processed = generate_price_history_and_forecast(
     st.session_state["budget_df"]
 )
 
-# Render Detailed Budget Comparison Table in Section 1
+# Detailed Provider Comparison Table
 sec1_comparison_cols = [
     "Commodity",
     "Region",
     "Unit",
+    "Actual Provider Price ($)",
     "Company Budget Target ($)",
-    "Baseline (2025 Avg Price)",
-    "Budget vs 2025 Avg (%)",
-    "Current YTD 2026 Avg Price",
-    "Budget vs YTD 2026 (%)",
+    "Provider vs Budget (%)",
     "Current Q2-2026 Price",
-    "Budget vs Current Q2 (%)",
+    "Provider vs Q2 Market (%)",
     "2026 Market Projection ($)",
-    "2026 Market Shift (%)",
-    "Budget vs 2026 Proj (%)",
+    "Provider vs 2026 Proj (%)",
     "2027 Market Projection ($)",
-    "2027 Market Shift (%)",
-    "Budget vs 2027 Proj (%)",
+    "Negotiation Action",
 ]
 
-st.markdown("##### 📋 Company Budget vs Market Benchmarks & Projections")
+st.markdown("##### 📋 Actual Provider Quote vs. Market Benchmarks")
 st.dataframe(
     df_processed[sec1_comparison_cols].style.map(
         lambda x: "text-align: center;"
@@ -531,45 +530,140 @@ st.dataframe(
     use_container_width=True,
 )
 
-# Excel Export Generator
-buffer = io.BytesIO()
-with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-    df_processed[
-        [
-            "Commodity",
-            "Region",
-            "Unit",
-            "Company Budget Target ($)",
-            "Baseline (2025 Avg Price)",
-            "Budget vs 2025 Avg (%)",
-            "Current YTD 2026 Avg Price",
-            "Budget vs YTD 2026 (%)",
-            "Current Q2-2026 Price",
-            "Budget vs Current Q2 (%)",
-            "2026 Market Projection ($)",
-            "2026 Market Shift (%)",
-            "Budget vs 2026 Proj (%)",
-            "2027 Market Projection ($)",
-            "2027 Market Shift (%)",
-            "Budget vs 2027 Proj (%)",
-            "Primary Driver",
-            "Negotiation Action",
-            "Data Source",
-        ]
-    ].to_excel(writer, sheet_name="Price_Trends", index=False)
+st.markdown("---")
 
-st.download_button(
-    label="📥 Export Excel File (.xlsx)",
-    data=buffer.getvalue(),
-    file_name="commodity_price_trends_and_forecast.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-)
+# -------------------------------------------------------------
+# SECTION 2: HEDGING & PORTFOLIO OPPORTUNITIES
+# -------------------------------------------------------------
+st.subheader("🛡️ Hedging Strategy & Portfolio Opportunities")
+st.caption("Identify leverage points, dual-sourcing splits, and raw material index-linking potential.")
+
+hedging_tab1, hedging_tab2 = st.tabs([
+    "🔀 Dual-Sourcing Allocation Strategy",
+    "📉 Raw Material Indexing & Pass-Through",
+])
+
+with hedging_tab1:
+    st.markdown("##### Dual-Sourcing Volume Allocation Model")
+    st.caption("Model potential blended unit cost savings by splitting volumes between primary strategic suppliers and secondary spot vendors.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        primary_share = st.slider("Primary Strategic Vendor Volume Share (%)", min_value=50, max_value=90, value=70, step=5)
+    with col2:
+        secondary_share = 100 - primary_share
+        st.metric("Secondary Spot Vendor Share (%)", f"{secondary_share}%")
+
+    dual_source_df = df_processed[["Commodity", "Region", "Unit", "Actual Provider Price ($)", "Current Q2-2026 Price"]].copy()
+    
+    dual_source_df["Primary Price ($)"] = df_processed["Raw_Actual_Provider"]
+    dual_source_df["Secondary Spot Price ($)"] = df_processed["Current_Price"]
+    
+    dual_source_df["Blended Unit Price ($)"] = (
+        (dual_source_df["Primary Price ($)"] * (primary_share / 100)) +
+        (dual_source_df["Secondary Spot Price ($)"] * (secondary_share / 100))
+    )
+    
+    dual_source_df["Potential Savings ($/unit)"] = dual_source_df["Primary Price ($)"] - dual_source_df["Blended Unit Price ($)"]
+    
+    display_dual_df = dual_source_df[[
+        "Commodity", "Region", "Unit", 
+        "Actual Provider Price ($)", 
+        "Secondary Spot Price ($)", 
+        "Blended Unit Price ($)", 
+        "Potential Savings ($/unit)"
+    ]].copy()
+
+    display_dual_df["Blended Unit Price ($)"] = display_dual_df["Blended Unit Price ($)"].apply(format_currency)
+    display_dual_df["Secondary Spot Price ($)"] = display_dual_df["Secondary Spot Price ($)"].apply(format_currency)
+    display_dual_df["Potential Savings ($/unit)"] = display_dual_df["Potential Savings ($/unit)"].apply(format_currency)
+
+    st.dataframe(display_dual_df.style.map(lambda x: "text-align: center;"), use_container_width=True)
+
+with hedging_tab2:
+    st.markdown("##### Index-Linked Pass-Through Transparency")
+    st.caption("Isolate core raw material costs to prevent supplier markups on non-volatile overhead.")
+
+    index_df = df_processed[[
+        "Commodity", "Region", "Unit", 
+        "Actual Provider Price ($)", 
+        "Current Q2-2026 Price", 
+        "Primary Driver", 
+        "Energy_Share_%", 
+        "Tariff_Share_%"
+    ]].copy()
+
+    index_df["Estimated Raw Material Base ($)"] = (df_processed["Current_Price"] * 0.70).apply(format_currency)
+    index_df["Suggested Indexing Mechanism"] = index_df["Commodity"].apply(
+        lambda c: "Cap/Floor Collar Agreement" if "Oil" in c else "Monthly Formula Pass-Through"
+    )
+
+    st.dataframe(index_df.style.map(lambda x: "text-align: center;"), use_container_width=True)
 
 st.markdown("---")
 
-# Section 2: Full Table View
-st.subheader("2. 18-Month Historical Quarterly Trends & Forecasts")
-st.caption("Company Budget is highlighted in **light green**, and Market Projections are in **light purple**.")
+# -------------------------------------------------------------
+# SECTION 3: FREIGHT & LOGISTICS UNBUNDLING
+# -------------------------------------------------------------
+st.subheader("🚚 Freight & Logistics Unbundling Tracker")
+st.caption("Unbundle base commodity price from ocean container surcharges, inland freight, and fuel indices.")
+
+freight_df = df_processed[["Commodity", "Region", "Unit", "Actual Provider Price ($)", "Freight_Share_%"]].copy()
+
+freight_df["Est. Inland Freight ($)"] = (df_processed["Raw_Actual_Provider"] * (freight_df["Freight_Share_%"] / 100) * 0.4).apply(format_currency)
+freight_df["Est. Ocean Surcharge ($)"] = (df_processed["Raw_Actual_Provider"] * (freight_df["Freight_Share_%"] / 100) * 0.6).apply(format_currency)
+freight_df["Unbundled Base Material ($)"] = (df_processed["Raw_Actual_Provider"] * (1 - freight_df["Freight_Share_%"] / 100)).apply(format_currency)
+freight_df["Freight Action"] = freight_df["Freight_Share_%"].apply(
+    lambda s: "🔴 Renegotiate Peak Surcharge" if s >= 50.0 else "✅ Standard Freight Rate"
+)
+
+st.dataframe(freight_df.style.map(lambda x: "text-align: center;"), use_container_width=True)
+
+st.markdown("---")
+
+# -------------------------------------------------------------
+# SECTION 4: HISTORICAL TRENDS, CHARTS & MAP
+# -------------------------------------------------------------
+st.subheader("4. 18-Month Historical Quarterly Trends & Forecasts")
+st.caption("Actual Provider Prices are highlighted in **light green**, and Market Projections are in **light purple**.")
+
+# --- VISUAL 2: HORIZONTAL BUDGET ALIGNMENT CHART FOR TABLE 2 ---
+st.markdown("##### 📊 Visual Benchmark Comparison: Provider Quote vs. Market Benchmarks")
+
+plot_records = []
+for _, r in df_processed.iterrows():
+    item_label = f"{r['Commodity']} ({r['Region']})"
+    plot_records.append({"Commodity": item_label, "Price Type": "Company Budget Target ($)", "Price": r["Raw_Budget"]})
+    plot_records.append({"Commodity": item_label, "Price Type": "Actual Provider Price ($)", "Price": r["Raw_Actual_Provider"]})
+    plot_records.append({"Commodity": item_label, "Price Type": "Current Q2 Spot ($)", "Price": r["Current_Price"]})
+    plot_records.append({"Commodity": item_label, "Price Type": "2026 Market Projection ($)", "Price": r["2026_Projection_Val"]})
+
+plot_df = pd.DataFrame(plot_records)
+
+fig_align = px.bar(
+    plot_df,
+    x="Price",
+    y="Commodity",
+    color="Price Type",
+    barmode="group",
+    orientation="h",
+    color_discrete_map={
+        "Company Budget Target ($)": "#34A853",
+        "Actual Provider Price ($)": "#EA4335",
+        "Current Q2 Spot ($)": "#4285F4",
+        "2026 Market Projection ($)": "#8A2BE2",
+    },
+    text_auto="$.2f",
+)
+fig_align.update_layout(
+    xaxis_title="Price ($)",
+    yaxis_title="Commodity & Region",
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    margin=dict(l=10, r=10, t=30, b=10),
+)
+st.plotly_chart(fig_align, use_container_width=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
 
 show_historical_quarters = st.checkbox(
     "Show Historical Quarterly Columns (Q1-2025 to Current)", value=False
@@ -582,6 +676,7 @@ base_cols = [
     "Baseline (2025 Avg Price)",
     "Current YTD 2026 Avg Price",
     "Current Q2-2026 Price",
+    "Actual Provider Price ($)",
     "Company Budget Target ($)",
 ]
 
@@ -602,7 +697,6 @@ summary_cols = [
     "2026 Market Projection ($)",
     "2027 Market Projection ($)",
     "Forecast Shift %",
-    "Variance vs Budget (%)",
     "Negotiation Action",
     "Data Source",
 ]
@@ -614,32 +708,47 @@ styled_df = (
     .style.map(lambda x: "background-color: #ffffff; color: #000000; text-align: center;")
     .map(
         lambda x: "background-color: #e6f4ea; color: #000000; font-weight: bold; text-align: center;",
-        subset=["Company Budget Target ($)"],
+        subset=["Actual Provider Price ($)"],
     )
     .map(
         lambda x: "background-color: #f3e8ff; color: #000000; font-weight: bold; text-align: center;",
         subset=["2026 Market Projection ($)", "2027 Market Projection ($)", "Forecast Shift %"],
     )
-    .map(
-        lambda val: (
-            "background-color: #fce8e6; color: #c5221f; font-weight: bold; text-align: center;"
-            if "Risk of Higher Prices" in str(val)
-            else (
-                "background-color: #e6f4ea; color: #137333; font-weight: bold; text-align: center;"
-                if "Opportunity to Lower Price" in str(val)
-                else "background-color: #ffffff; color: #000000; text-align: center;"
-            )
-        ),
-        subset=["Negotiation Action"],
-    )
 )
 
 st.dataframe(styled_df, use_container_width=True)
 
+# Excel Export Generator
+buffer = io.BytesIO()
+with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+    df_processed[
+        [
+            "Commodity",
+            "Region",
+            "Unit",
+            "Actual Provider Price ($)",
+            "Company Budget Target ($)",
+            "Provider vs Budget (%)",
+            "Current Q2-2026 Price",
+            "Provider vs Q2 Market (%)",
+            "2026 Market Projection ($)",
+            "2027 Market Projection ($)",
+            "Primary Driver",
+            "Negotiation Action",
+            "Data Source",
+        ]
+    ].to_excel(writer, sheet_name="Pre_Negotiation_Summary", index=False)
+
+st.download_button(
+    label="📥 Export Full Pre-Negotiation Excel File (.xlsx)",
+    data=buffer.getvalue(),
+    file_name="commodity_pre_negotiation_and_hedging.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+)
+
 st.markdown("---")
 
-# Section 3: Charts & Map
-st.markdown("#### 📈 Price Trend Trajectory (18 Months + Market Projections)")
+st.markdown("#### 📈 Price Trajectory vs. Provider Quote")
 
 time_cols = [
     "Q1-2025 (Hist)",
@@ -687,118 +796,7 @@ fig_line.update_layout(
 
 st.plotly_chart(fig_line, use_container_width=True)
 
-# -------------------------------------------------------------
-# COST DRIVER TABLE: Share of Net Forecast Change (%)
-# -------------------------------------------------------------
-st.subheader("📊 Cost Driver Breakdown (% Share of Net Forecast Shift)")
-st.caption(
-    "Displays the percentage share of each driver toward the total net forecast shift (sums to 100%)."
-)
-
-driver_contrib_df = df_processed[
-    [
-        "Commodity",
-        "Region",
-        "Forecast Shift %",
-        "Primary Driver",
-        "Energy_Share_%",
-        "Tariff_Share_%",
-        "Freight_Share_%",
-        "Unknown_Share_%",
-    ]
-].copy()
-
-driver_contrib_df["Energy & Raw Materials Share"] = driver_contrib_df[
-    "Energy_Share_%"
-].apply(lambda x: f"{x:.1f}%")
-driver_contrib_df["Tariffs & Trade Duties Share"] = driver_contrib_df[
-    "Tariff_Share_%"
-].apply(lambda x: f"{x:.1f}%")
-driver_contrib_df["Freight & Ocean Logistics Share"] = driver_contrib_df[
-    "Freight_Share_%"
-].apply(lambda x: f"{x:.1f}%")
-driver_contrib_df["Unknown / Other Factors Share"] = driver_contrib_df[
-    "Unknown_Share_%"
-].apply(lambda x: f"{x:.1f}%")
-driver_contrib_df["Total Driver Breakdown"] = driver_contrib_df.apply(
-    lambda r: (
-        f"{(r['Energy_Share_%'] + r['Tariff_Share_%'] + r['Freight_Share_%'] + r['Unknown_Share_%']):.1f}%"
-    ),
-    axis=1,
-)
-
-display_driver_table = driver_contrib_df[
-    [
-        "Commodity",
-        "Region",
-        "Forecast Shift %",
-        "Primary Driver",
-        "Energy & Raw Materials Share",
-        "Tariffs & Trade Duties Share",
-        "Freight & Ocean Logistics Share",
-        "Unknown / Other Factors Share",
-        "Total Driver Breakdown",
-    ]
-]
-
-st.dataframe(
-    display_driver_table.style.map(lambda x: "text-align: center;"),
-    use_container_width=True,
-)
-
-st.markdown("---")
-
-st.subheader("3. Company Budget vs 2026 Market Projection")
-
-fig_bar = go.Figure()
-labels = [
-    f"{r['Commodity']} ({r['Region']})" for _, r in df_processed.iterrows()
-]
-
-fig_bar.add_trace(
-    go.Bar(
-        x=labels,
-        y=df_processed["Raw_Budget"],
-        name="Company Budget Target ($)",
-        marker_color="#34A853",
-        text=df_processed["Raw_Budget"],
-        texttemplate="$%{y:,.2f}",
-        textposition="outside",
-        textfont=dict(size=10),
-    )
-)
-
-fig_bar.add_trace(
-    go.Bar(
-        x=labels,
-        y=df_processed["Raw_Forecast"],
-        name="2026 Market Projection ($)",
-        marker_color="#8A2BE2",
-        text=df_processed["Raw_Forecast"],
-        texttemplate="$%{y:,.2f}",
-        textposition="outside",
-        textfont=dict(size=10),
-    )
-)
-
-fig_bar.update_layout(
-    barmode="group",
-    xaxis=dict(title="Commodity & Region", tickfont=dict(size=11)),
-    yaxis=dict(title="Price ($)", tickfont=dict(size=11), tickprefix="$"),
-    legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=1.02,
-        xanchor="right",
-        x=1,
-        font=dict(size=10),
-    ),
-    margin=dict(l=10, r=10, t=40, b=10),
-)
-
-st.plotly_chart(fig_bar, use_container_width=True)
-
-st.subheader("4. US & Europe Predictive Map")
+st.subheader("5. US & Europe Predictive Map")
 
 fig_map = px.scatter_map(
     df_processed,
@@ -811,13 +809,11 @@ fig_map = px.scatter_map(
     hover_data={
         "Region": True,
         "Unit": True,
-        "Baseline (2025 Avg Price)": True,
-        "Current YTD 2026 Avg Price": True,
-        "Current Q2-2026 Price": True,
+        "Actual Provider Price ($)": True,
         "Company Budget Target ($)": True,
+        "Current Q2-2026 Price": True,
         "2026 Market Projection ($)": True,
         "2027 Market Projection ($)": True,
-        "Variance vs Budget (%)": True,
         "Negotiation Action": True,
         "Data Source": True,
         "Raw_Forecast_Shift": False,
