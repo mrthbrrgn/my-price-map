@@ -132,7 +132,7 @@ with st.sidebar:
         2. **Compare vs Benchmark:** Evaluate the delta between provider quotes and external market benchmarks.
         3. **Leverage Dual-Sourcing:** Split strategic volume (e.g., 70/30) in Section 2 to test spot price leverage.
         4. **Unbundle Freight:** Isolate base commodity price from ocean/inland logistics surcharges in Section 3.
-        5. **Individual Scaled Visuals:** Review 2-column scaled charts in Section 4 for itemized price variances.
+        5. **Individual Scaled Visuals:** Review 2-column scaled charts in Section 4 for itemized price variances with formatted currency axes.
         """
     )
 
@@ -645,7 +645,7 @@ st.caption("Individual dynamically-scaled charts allow precise comparison across
 
 st.markdown("##### 📊 Itemized Price Comparisons (Dynamically Scaled)")
 
-# Render 6 individual sub-charts arranged in a 3x2 grid
+# Render 6 individual sub-charts arranged in a 3x2 grid with formatted currency axes
 items_list = df_processed.to_dict("records")
 
 for row_idx in range(0, len(items_list), 2):
@@ -678,7 +678,11 @@ for row_idx in range(0, len(items_list), 2):
                 title_font=dict(size=13),
                 height=220,
                 margin=dict(l=10, r=20, t=35, b=10),
-                xaxis=dict(title="Price ($)", showgrid=True),
+                xaxis=dict(
+                    title="Price ($)", 
+                    showgrid=True,
+                    tickformat="$,.2f",
+                ),
                 yaxis=dict(autorange="reversed"),
                 showlegend=False,
             )
@@ -711,7 +715,11 @@ for row_idx in range(0, len(items_list), 2):
                 title_font=dict(size=13),
                 height=220,
                 margin=dict(l=10, r=20, t=35, b=10),
-                xaxis=dict(title="Price ($)", showgrid=True),
+                xaxis=dict(
+                    title="Price ($)", 
+                    showgrid=True,
+                    tickformat="$,.2f",
+                ),
                 yaxis=dict(autorange="reversed"),
                 showlegend=False,
             )
