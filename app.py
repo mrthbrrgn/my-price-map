@@ -130,12 +130,30 @@ with st.sidebar:
         """
         1. **Input Provider Quotes:** Enter your supplier's **Actual Provider Price ($)** in Section 1.
         2. **Compare vs Benchmark:** Evaluate the delta between provider quotes and external market benchmarks.
-        3. **Leverage Dual-Sourcing:** Split strategic volume (e.g., 70/30) to test spot price leverage.
-        4. **Unbundle Freight:** Isolate base commodity price from ocean/inland logistics surcharges.
+        3. **Leverage Dual-Sourcing:** Split strategic volume (e.g., 70/30) in Section 2 to test spot price leverage.
+        4. **Unbundle Freight:** Isolate base commodity price from ocean/inland logistics surcharges in Section 3.
+        5. **Individual Scaled Visuals:** Review 2-column scaled charts in Section 4 for itemized price variances.
         """
     )
 
     st.markdown("---")
+    st.header("💡 Module Breakdown")
+    with st.expander("🛡️ Section 2: Hedging Strategy"):
+        st.markdown(
+            """
+            * **Dual-Sourcing Model:** Simulates blended unit costs when allocating spend across primary strategic vendors and secondary spot suppliers.
+            * **Raw Material Indexing:** Recommends collar caps/floors or formula pass-throughs to lock in fair raw material pricing.
+            """
+        )
+
+    with st.expander("🚚 Section 3: Freight Unbundling"):
+        st.markdown(
+            """
+            * **Inland vs. Ocean Breakdown:** Splits freight shares into ocean surcharges and domestic transport.
+            * **Peak Surcharge Triggers:** Flags freight components above 50% for immediate unbundled negotiation.
+            """
+        )
+
     with st.expander("📐 Calculation Formulas"):
         st.markdown("**1. Provider vs. Benchmark Delta (%):**")
         st.latex(
@@ -320,8 +338,6 @@ def build_initial_dataset():
         item["Current_Q2_2026"] = q2_26
         item["YTD_2026_Avg"] = ytd_2026_avg
         item["Company_Budget_Price"] = round(avg_2025 * 1.05, 2)
-        
-        # Default Actual Provider Price (starts slightly above spot)
         item["Actual_Provider_Price"] = round(q2_26 * 1.04, 2)
 
         processed_list.append(item)
@@ -423,7 +439,7 @@ calc_df = generate_price_history_and_forecast(st.session_state["budget_df"])
 st.session_state["budget_df"]["2026_Projection_Val"] = calc_df["2026_Projection_Val"]
 st.session_state["budget_df"]["2027_Projection_Val"] = calc_df["2027_Projection_Val"]
 
-# --- VISUAL 1: PORTFOLIO EXECUTIVE KPI CARDS ---
+# --- SECTION 1 KPI SUMMARY VISUALS ---
 kpi_opps = sum(1 for f in calc_df["Negotiation Action"] if "Opportunity" in f)
 kpi_risks = sum(1 for f in calc_df["Negotiation Action"] if "Risk" in f)
 avg_provider_vs_spot = calc_df.apply(
@@ -622,46 +638,84 @@ st.dataframe(freight_df.style.map(lambda x: "text-align: center;"), use_containe
 st.markdown("---")
 
 # -------------------------------------------------------------
-# SECTION 4: HISTORICAL TRENDS, CHARTS & MAP
+# SECTION 4: HISTORICAL TRENDS & INDIVIDUAL SCALED CHARTS (3x2 GRID)
 # -------------------------------------------------------------
 st.subheader("4. 18-Month Historical Quarterly Trends & Forecasts")
-st.caption("Actual Provider Prices are highlighted in **light green**, and Market Projections are in **light purple**.")
+st.caption("Individual dynamically-scaled charts allow precise comparison across all commodity price ranges.")
 
-# --- VISUAL 2: HORIZONTAL BUDGET ALIGNMENT CHART FOR TABLE 2 ---
-st.markdown("##### 📊 Visual Benchmark Comparison: Provider Quote vs. Market Benchmarks")
+st.markdown("##### 📊 Itemized Price Comparisons (Dynamically Scaled)")
 
-plot_records = []
-for _, r in df_processed.iterrows():
-    item_label = f"{r['Commodity']} ({r['Region']})"
-    plot_records.append({"Commodity": item_label, "Price Type": "Company Budget Target ($)", "Price": r["Raw_Budget"]})
-    plot_records.append({"Commodity": item_label, "Price Type": "Actual Provider Price ($)", "Price": r["Raw_Actual_Provider"]})
-    plot_records.append({"Commodity": item_label, "Price Type": "Current Q2 Spot ($)", "Price": r["Current_Price"]})
-    plot_records.append({"Commodity": item_label, "Price Type": "2026 Market Projection ($)", "Price": r["2026_Projection_Val"]})
+# Render 6 individual sub-charts arranged in a 3x2 grid
+items_list = df_processed.to_dict("records")
 
-plot_df = pd.DataFrame(plot_records)
+for row_idx in range(0, len(items_list), 2):
+    g_col1, g_col2 = st.columns(2)
 
-fig_align = px.bar(
-    plot_df,
-    x="Price",
-    y="Commodity",
-    color="Price Type",
-    barmode="group",
-    orientation="h",
-    color_discrete_map={
-        "Company Budget Target ($)": "#34A853",
-        "Actual Provider Price ($)": "#EA4335",
-        "Current Q2 Spot ($)": "#4285F4",
-        "2026 Market Projection ($)": "#8A2BE2",
-    },
-    text_auto="$.2f",
-)
-fig_align.update_layout(
-    xaxis_title="Price ($)",
-    yaxis_title="Commodity & Region",
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    margin=dict(l=10, r=10, t=30, b=10),
-)
-st.plotly_chart(fig_align, use_container_width=True)
+    # Sub-chart 1
+    with g_col1:
+        if row_idx < len(items_list):
+            item = items_list[row_idx]
+            fig_sub = go.Figure()
+
+            categories = ["Budget Target", "Actual Provider", "Current Spot", "2026 Projection"]
+            vals = [item["Raw_Budget"], item["Raw_Actual_Provider"], item["Current_Price"], item["2026_Projection_Val"]]
+            colors = ["#34A853", "#EA4335", "#4285F4", "#8A2BE2"]
+
+            fig_sub.add_trace(
+                go.Bar(
+                    y=categories,
+                    x=vals,
+                    orientation="h",
+                    marker_color=colors,
+                    text=[f"${v:,.2f}" for v in vals],
+                    textposition="auto",
+                    textfont=dict(size=11, color="white"),
+                )
+            )
+
+            fig_sub.update_layout(
+                title=f"<b>{item['Commodity']} ({item['Region']})</b> — {item['Unit']}",
+                title_font=dict(size=13),
+                height=220,
+                margin=dict(l=10, r=20, t=35, b=10),
+                xaxis=dict(title="Price ($)", showgrid=True),
+                yaxis=dict(autorange="reversed"),
+                showlegend=False,
+            )
+            st.plotly_chart(fig_sub, use_container_width=True)
+
+    # Sub-chart 2
+    with g_col2:
+        if row_idx + 1 < len(items_list):
+            item = items_list[row_idx + 1]
+            fig_sub = go.Figure()
+
+            categories = ["Budget Target", "Actual Provider", "Current Spot", "2026 Projection"]
+            vals = [item["Raw_Budget"], item["Raw_Actual_Provider"], item["Current_Price"], item["2026_Projection_Val"]]
+            colors = ["#34A853", "#EA4335", "#4285F4", "#8A2BE2"]
+
+            fig_sub.add_trace(
+                go.Bar(
+                    y=categories,
+                    x=vals,
+                    orientation="h",
+                    marker_color=colors,
+                    text=[f"${v:,.2f}" for v in vals],
+                    textposition="auto",
+                    textfont=dict(size=11, color="white"),
+                )
+            )
+
+            fig_sub.update_layout(
+                title=f"<b>{item['Commodity']} ({item['Region']})</b> — {item['Unit']}",
+                title_font=dict(size=13),
+                height=220,
+                margin=dict(l=10, r=20, t=35, b=10),
+                xaxis=dict(title="Price ($)", showgrid=True),
+                yaxis=dict(autorange="reversed"),
+                showlegend=False,
+            )
+            st.plotly_chart(fig_sub, use_container_width=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
