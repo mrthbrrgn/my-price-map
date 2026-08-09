@@ -609,15 +609,29 @@ with hedging_tab2:
         "Tariff_Share_%"
     ]].copy()
 
+    # Format Share % columns strictly to 2 decimal places with %
+    index_df["Energy Share (%)"] = index_df["Energy_Share_%"].apply(lambda x: f"{x:.2f}%")
+    index_df["Tariff Share (%)"] = index_df["Tariff_Share_%"].apply(lambda x: f"{x:.2f}%")
+
     index_df["Estimated Raw Material Base ($)"] = (df_processed["Current_Price"] * 0.70).apply(format_currency)
     index_df["Suggested Indexing Mechanism"] = index_df["Commodity"].apply(
         lambda c: "Cap/Floor Collar Agreement" if "Oil" in c else "Monthly Formula Pass-Through"
     )
 
-    st.dataframe(index_df.style.map(lambda x: "text-align: center;"), use_container_width=True)
+    display_index_df = index_df[[
+        "Commodity", 
+        "Region", 
+        "Unit", 
+        "Actual Provider Price ($)", 
+        "Current Q2-2026 Price", 
+        "Primary Driver", 
+        "Energy Share (%)", 
+        "Tariff Share (%)", 
+        "Estimated Raw Material Base ($)", 
+        "Suggested Indexing Mechanism"
+    ]]
 
-st.markdown("---")
-
+    st.dataframe(display_index_df.style.map(lambda x: "text-align: center;"), use_container_width=True)
 # -------------------------------------------------------------
 # SECTION 3: FREIGHT & LOGISTICS UNBUNDLING
 # -------------------------------------------------------------
