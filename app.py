@@ -9,7 +9,7 @@ import streamlit as st
 st.set_page_config(
     page_title="Price Tracker",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 st.markdown(
@@ -106,6 +106,9 @@ def check_user_access():
 if not check_user_access():
     st.stop()
 
+# -------------------------------------------------------------
+# SIDEBAR INSTRUCTIONS & FORMULAS
+# -------------------------------------------------------------
 with st.sidebar:
     st.markdown("👤 Status: **Authorized Team User**")
     if st.button("🚪 Log Out"):
@@ -114,10 +117,44 @@ with st.sidebar:
 
     st.markdown("---")
     st.header("⚙️ Data Refresh Controls")
-    if st.button("🔄 Force Quarterly Data Refresh"):
+    if st.button("🔄 Force Quarterly Refresh"):
         st.cache_data.clear()
-        st.success("Quarterly benchmarks successfully refreshed!")
+        st.success("Quarterly benchmarks refreshed!")
         st.rerun()
+
+    st.markdown("---")
+    st.header("📖 Usage Instructions")
+    st.markdown(
+        """
+        1. **Edit Assumptions (Section 1):** Click inside table cells to update **Company Budget Targets** or **2026/2027 Market Shifts (%)**.
+        2. **Automatic Savings:** Any edits automatically update all downstream tables, trajectory charts, and maps.
+        3. **Review Negotiation Triggers:**
+           * 🟢 **Opportunity:** Market price $\le 10\%$ below budget.
+           * 🔴 **Risk:** Market price $\ge 10\%$ above budget.
+        4. **Export Data:** Click the **Export Excel** button to download full comparison sheets.
+        """
+    )
+
+    st.markdown("---")
+    with st.expander("📐 Calculation Formulas"):
+        st.markdown(
+            """
+            **1. 2026 Market Projection ($):**
+            $$\text{Current Q2 Price} \times \left(1 + \frac{\text{2026 Market Shift \%}}{100}\right)$$
+
+            **2. 2027 Market Projection ($):**
+            $$\text{2026 Projection} \times \left(1 + \frac{\text{2027 Market Shift \%}}{100}\right)$$
+
+            **3. Budget vs Measure Variance (%):**
+            $$\left(\frac{\text{Company Budget Target} - \text{Benchmark Price}}{\text{Benchmark Price}}\right) \times 100$$
+
+            **4. Forecast Shift (%):**
+            $$\left(\frac{\text{2026 Projection} - \text{Current Q2 Price}}{\text{Current Q2 Price}}\right) \times 100$$
+
+            **5. Cost Driver Breakdown Share (%):**
+            Shows percentage attribution of energy, tariffs, freight, and other factors summing to 100%.
+            """
+        )
 
 # -------------------------------------------------------------
 # MAIN APPLICATION CONTENT
@@ -341,9 +378,11 @@ def generate_price_history_and_forecast(df):
             "Budget vs Current Q2 (%)": format_budget_vs_measure(budget, current_q),
             "2026 Market Shift (%)": f"{row['Forecast_Shift_%']:+.2f}%",
             "2026 Market Projection": format_currency(proj_2026),
+            "Raw_2026_Projection": proj_2026,
             "Budget vs 2026 Proj (%)": format_budget_vs_measure(budget, proj_2026),
             "2027 Market Shift (%)": f"{row.get('Projection_2027_Shift_%', 2.0):+.2f}%",
             "2027 Market Projection": format_currency(proj_2027),
+            "Raw_2027_Projection": proj_2027,
             "Budget vs 2027 Proj (%)": format_budget_vs_measure(budget, proj_2027),
             "Q1-2025 (Hist)": format_currency(row["Q1_2025"]),
             "Q2-2025 (Hist)": format_currency(row["Q2_2025"]),
@@ -369,6 +408,7 @@ def generate_price_history_and_forecast(df):
 st.subheader("1. Enter Company Budget & Market Projection Assumptions")
 st.caption("💡 **Company Budget Comparisons:** Compare your budget directly against 2025 baselines, YTD 2026 averages, current Q2 prices, and projected 2026/2027 market shifts.")
 
+# Base editable columns
 editor_display_cols = [
     "Commodity",
     "Region",
@@ -432,7 +472,7 @@ df_processed = generate_price_history_and_forecast(
     st.session_state["budget_df"]
 )
 
-# Render Detailed Budget Comparison Table in Section 1
+# Render Detailed Budget Comparison Table in Section 1 (Includes 2026 and 2027 Projections)
 sec1_comparison_cols = [
     "Commodity",
     "Region",
