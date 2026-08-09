@@ -139,14 +139,13 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Helper function to format currency
+
 def format_currency(val):
     if pd.isna(val):
         return "$0.00"
     return f"${val:,.2f}"
 
 
-# Generate 2025 Quarterly Baseline & Calculates Prior Year Average
 def build_initial_dataset():
     np.random.seed(42)
 
@@ -251,9 +250,8 @@ def build_initial_dataset():
         q3_25 = round(seed * (1 + np.random.uniform(-0.05, 0.05)), 2)
         q4_25 = round(seed * (1 + np.random.uniform(-0.05, 0.05)), 2)
 
-        # Base price = Exact average of previous year (2025)
         avg_2025 = round((q1_25 + q2_25 + q3_25 + q4_25) / 4, 2)
-        
+
         q1_26 = round(avg_2025 * (1 + np.random.uniform(-0.04, 0.04)), 2)
         q2_26 = round(q1_26 * (1 + np.random.uniform(-0.03, 0.03)), 2)
 
@@ -265,13 +263,12 @@ def build_initial_dataset():
         item["Q1_2026"] = q1_26
         item["Current_Q2_2026"] = q2_26
         item["Budgeted Price"] = round(avg_2025 * 1.10, 2)
-        
+
         processed_list.append(item)
 
     return pd.DataFrame(processed_list)
 
 
-# Initialize Session State Dataframe
 if "budget_df" not in st.session_state:
     st.session_state["budget_df"] = build_initial_dataset()
 
@@ -288,7 +285,9 @@ def generate_price_history_and_forecast(df):
         )
 
         budget = row["Budgeted Price"]
-        variance_pct = ((forecast_price - budget) / budget) * 100 if budget > 0 else 0.0
+        variance_pct = (
+            ((forecast_price - budget) / budget) * 100 if budget > 0 else 0.0
+        )
 
         if variance_pct <= -10.0:
             flag = "🟢 Opportunity to Lower Price"
@@ -333,9 +332,10 @@ def generate_price_history_and_forecast(df):
 
 # Section 1: Budget Entry
 st.subheader("1. Enter Budgeted Prices & Forecast Assumptions")
-st.caption("💡 **Baseline Benchmark:** Set as the average price from the previous year (2025). Edit budgeted target prices or forecast shifts below!")
+st.caption(
+    "💡 **Baseline Benchmark:** Set as the average price from the previous year (2025). Edit budgeted target prices or forecast shifts below!"
+)
 
-# Exclude lat and lon from section 1 editor view
 editor_display_cols = [
     "Commodity",
     "Region",
@@ -374,22 +374,31 @@ edited_df = st.data_editor(
             "Primary Cost Driver",
             help="Main cause driving price changes.",
         ),
-        "Energy_Share_%": st.column_config.NumberColumn("Energy Share (%)", format="%.1f%%"),
-        "Tariff_Share_%": st.column_config.NumberColumn("Tariff Share (%)", format="%.1f%%"),
-        "Freight_Share_%": st.column_config.NumberColumn("Freight Share (%)", format="%.1f%%"),
-        "Unknown_Share_%": st.column_config.NumberColumn("Unknown Share (%)", format="%.1f%%"),
+        "Energy_Share_%": st.column_config.NumberColumn(
+            "Energy Share (%)", format="%.1f%%"
+        ),
+        "Tariff_Share_%": st.column_config.NumberColumn(
+            "Tariff Share (%)", format="%.1f%%"
+        ),
+        "Freight_Share_%": st.column_config.NumberColumn(
+            "Freight Share (%)", format="%.1f%%"
+        ),
+        "Unknown_Share_%": st.column_config.NumberColumn(
+            "Unknown Share (%)", format="%.1f%%"
+        ),
     },
     use_container_width=True,
     num_rows="dynamic",
     key="budget_editor",
 )
 
-# Re-merge hidden lat/lon and historical columns back into session state
 full_updated_df = st.session_state["budget_df"].copy()
 full_updated_df.update(edited_df)
 st.session_state["budget_df"] = full_updated_df
 
-df_processed = generate_price_history_and_forecast(st.session_state["budget_df"])
+df_processed = generate_price_history_and_forecast(
+    st.session_state["budget_df"]
+)
 
 # Excel Export Generator
 buffer = io.BytesIO()
@@ -427,20 +436,35 @@ st.markdown("---")
 
 # Section 2: Full Table View
 st.subheader("2. 18-Month Historical Quarterly Trends & Forecasts")
-st.caption("Budgeted prices are highlighted in **light green**, and Forecast & Shift columns are in **light purple**.")
+st.caption(
+    "Budgeted prices are highlighted in **light green**, and Forecast & Shift columns are in **light purple**."
+)
 
-show_historical_quarters = st.checkbox("Show Historical Quarterly Columns (Q1-2025 to Current)", value=False)
+show_historical_quarters = st.checkbox(
+    "Show Historical Quarterly Columns (Q1-2025 to Current)", value=False
+)
 
-base_cols = ["Commodity", "Region", "Unit", "Baseline (2025 Avg Price)", "Primary Driver", "Budgeted Price"]
+base_cols = [
+    "Commodity",
+    "Region",
+    "Unit",
+    "Baseline (2025 Avg Price)",
+    "Primary Driver",
+    "Budgeted Price",
+]
 
-hist_cols = [
-    "Q1-2025 (Hist)",
-    "Q2-2025 (Hist)",
-    "Q3-2025 (Hist)",
-    "Q4-2025 (Hist)",
-    "Q1-2026 (Hist)",
-    "Current Q2-2026 (Hist)",
-] if show_historical_quarters else []
+hist_cols = (
+    [
+        "Q1-2025 (Hist)",
+        "Q2-2025 (Hist)",
+        "Q3-2025 (Hist)",
+        "Q4-2025 (Hist)",
+        "Q1-2026 (Hist)",
+        "Current Q2-2026 (Hist)",
+    ]
+    if show_historical_quarters
+    else []
+)
 
 summary_cols = [
     "6M Forecast Price",
@@ -454,9 +478,7 @@ selected_display_cols = base_cols + hist_cols + summary_cols
 
 styled_df = (
     df_processed[selected_display_cols]
-    .style.map(
-        lambda x: "background-color: #ffffff; color: #000000;"
-    )
+    .style.map(lambda x: "background-color: #ffffff; color: #000000;")
     .map(
         lambda x: "background-color: #e6f4ea; color: #000000; font-weight: bold;",
         subset=["Budgeted Price"],
@@ -467,9 +489,13 @@ styled_df = (
     )
     .map(
         lambda val: (
-            "background-color: #fce8e6; color: #c5221f; font-weight: bold;" if "Risk of Higher Prices" in str(val)
-            else "background-color: #e6f4ea; color: #137333; font-weight: bold;" if "Opportunity to Lower Price" in str(val)
-            else "background-color: #ffffff; color: #000000;"
+            "background-color: #fce8e6; color: #c5221f; font-weight: bold;"
+            if "Risk of Higher Prices" in str(val)
+            else (
+                "background-color: #e6f4ea; color: #137333; font-weight: bold;"
+                if "Opportunity to Lower Price" in str(val)
+                else "background-color: #ffffff; color: #000000;"
+            )
         ),
         subset=["Negotiation Action"],
     )
@@ -531,7 +557,9 @@ st.plotly_chart(fig_line, use_container_width=True)
 # COST DRIVER TABLE: Share of Net Forecast Change (%)
 # -------------------------------------------------------------
 st.subheader("📊 Cost Driver Breakdown (% Share of Net Forecast Shift)")
-st.caption("Displays the percentage share of each driver toward the total net forecast shift (sums to 100%).")
+st.caption(
+    "Displays the percentage share of each driver toward the total net forecast shift (sums to 100%)."
+)
 
 driver_contrib_df = df_processed[
     [
@@ -546,12 +574,23 @@ driver_contrib_df = df_processed[
     ]
 ].copy()
 
-driver_contrib_df["Energy & Raw Materials Share"] = driver_contrib_df["Energy_Share_%"].apply(lambda x: f"{x:.1f}%")
-driver_contrib_df["Tariffs & Trade Duties Share"] = driver_contrib_df["Tariff_Share_%"].apply(lambda x: f"{x:.1f}%")
-driver_contrib_df["Freight & Ocean Logistics Share"] = driver_contrib_df["Freight_Share_%"].apply(lambda x: f"{x:.1f}%")
-driver_contrib_df["Unknown / Other Factors Share"] = driver_contrib_df["Unknown_Share_%"].apply(lambda x: f"{x:.1f}%")
+driver_contrib_df["Energy & Raw Materials Share"] = driver_contrib_df[
+    "Energy_Share_%"
+].apply(lambda x: f"{x:.1f}%")
+driver_contrib_df["Tariffs & Trade Duties Share"] = driver_contrib_df[
+    "Tariff_Share_%"
+].apply(lambda x: f"{x:.1f}%")
+driver_contrib_df["Freight & Ocean Logistics Share"] = driver_contrib_df[
+    "Freight_Share_%"
+].apply(lambda x: f"{x:.1f}%")
+driver_contrib_df["Unknown / Other Factors Share"] = driver_contrib_df[
+    "Unknown_Share_%"
+].apply(lambda x: f"{x:.1f}%")
 driver_contrib_df["Total Driver Breakdown"] = driver_contrib_df.apply(
-    lambda r: f"{(r['Energy_Share_%'] + r['Tariff_Share_%'] + r['Freight_Share_%'] + r['Unknown_Share_%']):.1f}%", axis=1
+    lambda r: (
+        f"{(r['Energy_Share_%'] + r['Tariff_Share_%'] + r['Freight_Share_%'] + r['Unknown_Share_%']):.1f}%"
+    ),
+    axis=1,
 )
 
 display_driver_table = driver_contrib_df[
@@ -585,6 +624,10 @@ fig_bar.add_trace(
         y=df_processed["Raw_Budget"],
         name="Budgeted Target Price ($)",
         marker_color="#34A853",
+        text=df_processed["Raw_Budget"],
+        texttemplate="$%{y:,.2f}",
+        textposition="outside",
+        textfont=dict(size=10),
     )
 )
 
@@ -594,6 +637,10 @@ fig_bar.add_trace(
         y=df_processed["Raw_Forecast"],
         name="6M Forecast Price ($)",
         marker_color="#8A2BE2",
+        text=df_processed["Raw_Forecast"],
+        texttemplate="$%{y:,.2f}",
+        textposition="outside",
+        textfont=dict(size=10),
     )
 )
 
@@ -609,7 +656,7 @@ fig_bar.update_layout(
         x=1,
         font=dict(size=10),
     ),
-    margin=dict(l=10, r=10, t=30, b=10),
+    margin=dict(l=10, r=10, t=40, b=10),
 )
 
 st.plotly_chart(fig_bar, use_container_width=True)
