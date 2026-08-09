@@ -107,7 +107,7 @@ if not check_user_access():
     st.stop()
 
 # -------------------------------------------------------------
-# SIDEBAR INSTRUCTIONS & FORMULAS (CLEANED LATEX FORMATTING)
+# SIDEBAR INSTRUCTIONS & FORMULAS
 # -------------------------------------------------------------
 with st.sidebar:
     st.markdown("👤 Status: **Authorized Team User**")
@@ -117,9 +117,11 @@ with st.sidebar:
 
     st.markdown("---")
     st.header("⚙️ Data Refresh Controls")
-    if st.button("🔄 Force Quarterly Refresh"):
+    if st.button("🔄 Force Reset & Refresh Data"):
+        if "budget_df" in st.session_state:
+            del st.session_state["budget_df"]
         st.cache_data.clear()
-        st.success("Quarterly benchmarks refreshed!")
+        st.success("Data structure successfully reset!")
         st.rerun()
 
     st.markdown("---")
@@ -138,16 +140,28 @@ with st.sidebar:
     st.markdown("---")
     with st.expander("📐 Calculation Formulas"):
         st.markdown("**1. 2026 Market Projection ($):**")
-        st.latex(r"\text{Current Q2 Price} \times \left(1 + \frac{\text{2026 Shift \%}}{100}\right)")
+        st.latex(
+            r"\text{Current Q2 Price} \times \left(1 + \frac{\text{2026 Shift"
+            r" \%}}{100}\right)"
+        )
 
         st.markdown("**2. 2027 Market Projection ($):**")
-        st.latex(r"\text{2026 Projection} \times \left(1 + \frac{\text{2027 Shift \%}}{100}\right)")
+        st.latex(
+            r"\text{2026 Projection} \times \left(1 + \frac{\text{2027 Shift"
+            r" \%}}{100}\right)"
+        )
 
         st.markdown("**3. Budget vs Measure Variance (%):**")
-        st.latex(r"\left(\frac{\text{Company Budget Target} - \text{Benchmark Price}}{\text{Benchmark Price}}\right) \times 100")
+        st.latex(
+            r"\left(\frac{\text{Company Budget Target} - \text{Benchmark"
+            r" Price}}{\text{Benchmark Price}}\right) \times 100"
+        )
 
         st.markdown("**4. Forecast Shift (%):**")
-        st.latex(r"\left(\frac{\text{2026 Projection} - \text{Current Q2 Price}}{\text{Current Q2 Price}}\right) \times 100")
+        st.latex(
+            r"\left(\frac{\text{2026 Projection} - \text{Current Q2"
+            r" Price}}{\text{Current Q2 Price}}\right) \times 100"
+        )
 
 # -------------------------------------------------------------
 # MAIN APPLICATION CONTENT
@@ -320,26 +334,27 @@ def build_initial_dataset():
     return pd.DataFrame(processed_list)
 
 
-if "budget_df" not in st.session_state:
+if "budget_df" not in st.session_state or "YTD_2026_Avg" not in st.session_state["budget_df"].columns:
     st.session_state["budget_df"] = build_initial_dataset()
 
 
 def generate_price_history_and_forecast(df):
     history_data = []
     for idx, row in df.iterrows():
-        base_avg_2025 = row["Base_Price_2025_Avg"]
-        ytd_avg_2026 = row["YTD_2026_Avg"]
-        current_q = row["Current_Q2_2026"]
+        base_avg_2025 = row.get("Base_Price_2025_Avg", row.get("Seed_Price", 100.0))
+        ytd_avg_2026 = row.get("YTD_2026_Avg", base_avg_2025)
+        current_q = row.get("Current_Q2_2026", base_avg_2025)
+
+        shift_2026 = row.get("Forecast_Shift_%", 0.0)
+        shift_2027 = row.get("Projection_2027_Shift_%", 2.0)
 
         # Market Projections
-        proj_2026 = round(current_q * (1 + row["Forecast_Shift_%"] / 100), 2)
+        proj_2026 = round(current_q * (1 + shift_2026 / 100), 2)
         price_delta_pct = round(((proj_2026 - current_q) / current_q) * 100, 2)
 
-        proj_2027 = round(
-            proj_2026 * (1 + row.get("Projection_2027_Shift_%", 2.0) / 100), 2
-        )
+        proj_2027 = round(proj_2026 * (1 + shift_2027 / 100), 2)
 
-        budget = row["Company_Budget_Price"]
+        budget = row.get("Company_Budget_Price", base_avg_2025)
         variance_pct = (
             ((proj_2026 - budget) / budget) * 100 if budget > 0 else 0.0
         )
@@ -354,20 +369,20 @@ def generate_price_history_and_forecast(df):
         record = {
             "Commodity": row["Commodity"],
             "Region": row["Region"],
-            "lat": row["lat"],
-            "lon": row["lon"],
+            "lat": row.get("lat", 0.0),
+            "lon": row.get("lon", 0.0),
             "Unit": row["Unit"],
-            "Primary Driver": row["Primary Driver"],
+            "Primary Driver": row.get("Primary Driver", "Market Shifts"),
             "Negotiation Action": flag,
-            "Data Source": row["Data Source"],
+            "Data Source": row.get("Data Source", "Industry Benchmark"),
             "Raw_Budget": budget,
             "Current_Price": current_q,
             "Company_Budget_Price": budget,
             "Base_Price_2025_Avg": base_avg_2025,
-            "YTD_2026_Avg": ytd_2026_avg,
+            "YTD_2026_Avg": ytd_avg_2026,
             "Current_Q2_2026": current_q,
-            "Forecast_Shift_%": row["Forecast_Shift_%"],
-            "Projection_2027_Shift_%": row.get("Projection_2027_Shift_%", 2.0),
+            "Forecast_Shift_%": shift_2026,
+            "Projection_2027_Shift_%": shift_2027,
             "2026_Projection_Val": proj_2026,
             "2027_Projection_Val": proj_2027,
             "Company Budget Target ($)": format_currency(budget),
@@ -377,17 +392,17 @@ def generate_price_history_and_forecast(df):
             "Budget vs YTD 2026 (%)": format_budget_vs_measure(budget, ytd_avg_2026),
             "Current Q2-2026 Price": format_currency(current_q),
             "Budget vs Current Q2 (%)": format_budget_vs_measure(budget, current_q),
-            "2026 Market Shift (%)": f"{row['Forecast_Shift_%']:+.2f}%",
+            "2026 Market Shift (%)": f"{shift_2026:+.2f}%",
             "2026 Market Projection ($)": format_currency(proj_2026),
             "Budget vs 2026 Proj (%)": format_budget_vs_measure(budget, proj_2026),
-            "2027 Market Shift (%)": f"{row.get('Projection_2027_Shift_%', 2.0):+.2f}%",
+            "2027 Market Shift (%)": f"{shift_2027:+.2f}%",
             "2027 Market Projection ($)": format_currency(proj_2027),
             "Budget vs 2027 Proj (%)": format_budget_vs_measure(budget, proj_2027),
-            "Q1-2025 (Hist)": format_currency(row["Q1_2025"]),
-            "Q2-2025 (Hist)": format_currency(row["Q2_2025"]),
-            "Q3-2025 (Hist)": format_currency(row["Q3_2025"]),
-            "Q4-2025 (Hist)": format_currency(row["Q4_2025"]),
-            "Q1-2026 (Hist)": format_currency(row["Q1_2026"]),
+            "Q1-2025 (Hist)": format_currency(row.get("Q1_2025", base_avg_2025)),
+            "Q2-2025 (Hist)": format_currency(row.get("Q2_2025", base_avg_2025)),
+            "Q3-2025 (Hist)": format_currency(row.get("Q3_2025", base_avg_2025)),
+            "Q4-2025 (Hist)": format_currency(row.get("Q4_2025", base_avg_2025)),
+            "Q1-2026 (Hist)": format_currency(row.get("Q1_2026", current_q)),
             "Current Q2-2026 (Hist)": format_currency(current_q),
             "Raw_Forecast": proj_2026,
             "Forecast Shift %": f"{price_delta_pct:+.2f}%",
@@ -407,12 +422,10 @@ def generate_price_history_and_forecast(df):
 st.subheader("1. Enter Company Budget & Market Projection Assumptions")
 st.caption("💡 **Company Budget Comparisons:** Compare your budget directly against 2025 baselines, YTD 2026 averages, current Q2 prices, and projected 2026/2027 market shifts.")
 
-# Calculate initial projections for the data editor display
 calc_df = generate_price_history_and_forecast(st.session_state["budget_df"])
 st.session_state["budget_df"]["2026_Projection_Val"] = calc_df["2026_Projection_Val"]
 st.session_state["budget_df"]["2027_Projection_Val"] = calc_df["2027_Projection_Val"]
 
-# Data editor display columns with Values BEFORE Shifts
 editor_display_cols = [
     "Commodity",
     "Region",
