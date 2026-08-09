@@ -20,14 +20,19 @@ st.markdown(
     h4 { font-size: 1.1rem !important; font-weight: 600 !important; }
     .stCaption, p, div { font-size: 1.0rem !important; }
     
-    /* Enforce White Background & Black Text for all Dataframes/Editors */
+    /* Enforce White Background, Black Text, and Centered Alignment for all Dataframes/Editors */
     .stDataFrame, .stDataEditor {
         font-size: 0.95rem !important;
         background-color: #ffffff !important;
         color: #000000 !important;
     }
     
-    /* Wrap Table Header Text */
+    /* Center text inside Dataframes */
+    div[data-testid="stTable"] td, .stDataFrame td, div[data-testid="stDataEditor"] td {
+        text-align: center !important;
+    }
+    
+    /* Wrap & Center Table Header Text */
     div[data-testid="stTable"] th, .stDataFrame th, div[data-column-header] {
         white-space: normal !important;
         word-wrap: break-word !important;
@@ -146,10 +151,10 @@ def format_currency(val):
     return f"${val:,.2f}"
 
 
-def format_pct_diff(val, base):
-    if base <= 0 or pd.isna(val) or pd.isna(base):
+def format_budget_vs_measure(budget, measure):
+    if measure <= 0 or pd.isna(budget) or pd.isna(measure):
         return "0.00%"
-    diff_pct = ((val - base) / base) * 100
+    diff_pct = ((budget - measure) / measure) * 100
     return f"{diff_pct:+.2f}%"
 
 
@@ -329,17 +334,17 @@ def generate_price_history_and_forecast(df):
             "Current_Price": current_q,
             "Company Budget Target ($)": format_currency(budget),
             "Baseline (2025 Avg Price)": format_currency(base_avg_2025),
-            "2025 Avg vs Budget (%)": format_pct_diff(base_avg_2025, budget),
+            "Budget vs 2025 Avg (%)": format_budget_vs_measure(budget, base_avg_2025),
             "Current YTD 2026 Avg Price": format_currency(ytd_avg_2026),
-            "YTD 2026 vs Budget (%)": format_pct_diff(ytd_avg_2026, budget),
+            "Budget vs YTD 2026 (%)": format_budget_vs_measure(budget, ytd_avg_2026),
             "Current Q2-2026 Price": format_currency(current_q),
-            "Current Q2 vs Budget (%)": format_pct_diff(current_q, budget),
+            "Budget vs Current Q2 (%)": format_budget_vs_measure(budget, current_q),
             "2026 Market Shift (%)": f"{row['Forecast_Shift_%']:+.2f}%",
             "2026 Market Projection": format_currency(proj_2026),
-            "2026 Projection vs Budget (%)": f"{variance_pct:+.2f}%",
+            "Budget vs 2026 Proj (%)": format_budget_vs_measure(budget, proj_2026),
             "2027 Market Shift (%)": f"{row.get('Projection_2027_Shift_%', 2.0):+.2f}%",
             "2027 Market Projection": format_currency(proj_2027),
-            "2027 Projection vs Budget (%)": format_pct_diff(proj_2027, budget),
+            "Budget vs 2027 Proj (%)": format_budget_vs_measure(budget, proj_2027),
             "Q1-2025 (Hist)": format_currency(row["Q1_2025"]),
             "Q2-2025 (Hist)": format_currency(row["Q2_2025"]),
             "Q3-2025 (Hist)": format_currency(row["Q3_2025"]),
@@ -362,9 +367,7 @@ def generate_price_history_and_forecast(df):
 
 # Section 1: Budget Entry & Assumptions
 st.subheader("1. Enter Company Budget & Market Projection Assumptions")
-st.caption(
-    "💡 **Company Budget Comparisons:** Compare your budget directly against 2025 baselines, YTD 2026 averages, current Q2 prices, and projected 2026/2027 shifts."
-)
+st.caption("💡 **Company Budget Comparisons:** Compare your budget directly against 2025 baselines, YTD 2026 averages, current Q2 prices, and projected 2026/2027 market shifts.")
 
 editor_display_cols = [
     "Commodity",
@@ -384,25 +387,25 @@ edited_df = st.data_editor(
         "Company_Budget_Price": st.column_config.NumberColumn(
             "Company Budget Target ($)",
             help="Company's target budget.",
-            format="$%.2f",
+            format="$%,.2f",
             min_value=0,
         ),
         "Base_Price_2025_Avg": st.column_config.NumberColumn(
             "Baseline (2025 Avg Price)",
             help="Average price across 2025.",
-            format="$%.2f",
+            format="$%,.2f",
             disabled=True,
         ),
         "YTD_2026_Avg": st.column_config.NumberColumn(
             "Current YTD 2026 Avg Price",
             help="Year-to-date average price for 2026.",
-            format="$%.2f",
+            format="$%,.2f",
             disabled=True,
         ),
         "Current_Q2_2026": st.column_config.NumberColumn(
             "Current Q2-2026 Price",
             help="Latest active quarter spot benchmark price.",
-            format="$%.2f",
+            format="$%,.2f",
             disabled=True,
         ),
         "Forecast_Shift_%": st.column_config.NumberColumn(
@@ -436,21 +439,26 @@ sec1_comparison_cols = [
     "Unit",
     "Company Budget Target ($)",
     "Baseline (2025 Avg Price)",
-    "2025 Avg vs Budget (%)",
+    "Budget vs 2025 Avg (%)",
     "Current YTD 2026 Avg Price",
-    "YTD 2026 vs Budget (%)",
+    "Budget vs YTD 2026 (%)",
     "Current Q2-2026 Price",
-    "Current Q2 vs Budget (%)",
+    "Budget vs Current Q2 (%)",
     "2026 Market Shift (%)",
     "2026 Market Projection",
-    "2026 Projection vs Budget (%)",
+    "Budget vs 2026 Proj (%)",
     "2027 Market Shift (%)",
     "2027 Market Projection",
-    "2027 Projection vs Budget (%)",
+    "Budget vs 2027 Proj (%)",
 ]
 
 st.markdown("##### 📋 Company Budget vs Market Benchmarks & Projections")
-st.dataframe(df_processed[sec1_comparison_cols], use_container_width=True)
+st.dataframe(
+    df_processed[sec1_comparison_cols].style.map(
+        lambda x: "text-align: center;"
+    ),
+    use_container_width=True,
+)
 
 # Excel Export Generator
 buffer = io.BytesIO()
@@ -462,17 +470,17 @@ with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             "Unit",
             "Company Budget Target ($)",
             "Baseline (2025 Avg Price)",
-            "2025 Avg vs Budget (%)",
+            "Budget vs 2025 Avg (%)",
             "Current YTD 2026 Avg Price",
-            "YTD 2026 vs Budget (%)",
+            "Budget vs YTD 2026 (%)",
             "Current Q2-2026 Price",
-            "Current Q2 vs Budget (%)",
+            "Budget vs Current Q2 (%)",
             "2026 Market Shift (%)",
             "2026 Market Projection",
-            "2026 Projection vs Budget (%)",
+            "Budget vs 2026 Proj (%)",
             "2027 Market Shift (%)",
             "2027 Market Projection",
-            "2027 Projection vs Budget (%)",
+            "Budget vs 2027 Proj (%)",
             "Primary Driver",
             "Negotiation Action",
             "Data Source",
@@ -490,9 +498,7 @@ st.markdown("---")
 
 # Section 2: Full Table View
 st.subheader("2. 18-Month Historical Quarterly Trends & Forecasts")
-st.caption(
-    "Company Budget is highlighted in **light green**, and Market Projections are in **light purple**."
-)
+st.caption("Company Budget is highlighted in **light green**, and Market Projections are in **light purple**.")
 
 show_historical_quarters = st.checkbox(
     "Show Historical Quarterly Columns (Q1-2025 to Current)", value=False
@@ -534,23 +540,23 @@ selected_display_cols = base_cols + hist_cols + summary_cols
 
 styled_df = (
     df_processed[selected_display_cols]
-    .style.map(lambda x: "background-color: #ffffff; color: #000000;")
+    .style.map(lambda x: "background-color: #ffffff; color: #000000; text-align: center;")
     .map(
-        lambda x: "background-color: #e6f4ea; color: #000000; font-weight: bold;",
+        lambda x: "background-color: #e6f4ea; color: #000000; font-weight: bold; text-align: center;",
         subset=["Company Budget Target ($)"],
     )
     .map(
-        lambda x: "background-color: #f3e8ff; color: #000000; font-weight: bold;",
+        lambda x: "background-color: #f3e8ff; color: #000000; font-weight: bold; text-align: center;",
         subset=["2026 Market Projection", "2027 Market Projection", "Forecast Shift %"],
     )
     .map(
         lambda val: (
-            "background-color: #fce8e6; color: #c5221f; font-weight: bold;"
+            "background-color: #fce8e6; color: #c5221f; font-weight: bold; text-align: center;"
             if "Risk of Higher Prices" in str(val)
             else (
-                "background-color: #e6f4ea; color: #137333; font-weight: bold;"
+                "background-color: #e6f4ea; color: #137333; font-weight: bold; text-align: center;"
                 if "Opportunity to Lower Price" in str(val)
-                else "background-color: #ffffff; color: #000000;"
+                else "background-color: #ffffff; color: #000000; text-align: center;"
             )
         ),
         subset=["Negotiation Action"],
@@ -664,7 +670,10 @@ display_driver_table = driver_contrib_df[
     ]
 ]
 
-st.dataframe(display_driver_table, use_container_width=True)
+st.dataframe(
+    display_driver_table.style.map(lambda x: "text-align: center;"),
+    use_container_width=True,
+)
 
 st.markdown("---")
 
