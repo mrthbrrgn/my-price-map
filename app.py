@@ -163,6 +163,7 @@ def build_initial_dataset():
             "Freight_Share_%": 60.0,
             "Unknown_Share_%": 10.0,
             "Forecast_Shift_%": -5.0,
+            "Projection_2027_Shift_%": 2.5,
             "Data Source": "CME / Malayan Palm Oil Board (MPOB)",
         },
         {
@@ -178,6 +179,7 @@ def build_initial_dataset():
             "Freight_Share_%": 80.0,
             "Unknown_Share_%": 10.0,
             "Forecast_Shift_%": -12.0,
+            "Projection_2027_Shift_%": -3.0,
             "Data Source": "Bursa Malaysia (KL CPO Futures Index)",
         },
         {
@@ -193,6 +195,7 @@ def build_initial_dataset():
             "Freight_Share_%": 0.0,
             "Unknown_Share_%": 5.0,
             "Forecast_Shift_%": 2.1,
+            "Projection_2027_Shift_%": 1.5,
             "Data Source": "ICIS Petrochemical Gulf Coast Index",
         },
         {
@@ -208,6 +211,7 @@ def build_initial_dataset():
             "Freight_Share_%": 10.0,
             "Unknown_Share_%": 5.0,
             "Forecast_Shift_%": -15.0,
+            "Projection_2027_Shift_%": 4.0,
             "Data Source": "S&P Global Platts Chemical Insights",
         },
         {
@@ -223,6 +227,7 @@ def build_initial_dataset():
             "Freight_Share_%": 10.0,
             "Unknown_Share_%": 5.0,
             "Forecast_Shift_%": 1.2,
+            "Projection_2027_Shift_%": 2.0,
             "Data Source": "ICIS European Silicones Benchmark",
         },
         {
@@ -238,6 +243,7 @@ def build_initial_dataset():
             "Freight_Share_%": 75.0,
             "Unknown_Share_%": 10.0,
             "Forecast_Shift_%": -8.0,
+            "Projection_2027_Shift_%": 1.0,
             "Data Source": "USDA Oleochemical / Refined Glycerin Reports",
         },
     ]
@@ -255,6 +261,9 @@ def build_initial_dataset():
         q1_26 = round(avg_2025 * (1 + np.random.uniform(-0.04, 0.04)), 2)
         q2_26 = round(q1_26 * (1 + np.random.uniform(-0.03, 0.03)), 2)
 
+        # Current YTD 2026 Average Price
+        ytd_2026_avg = round((q1_26 + q2_26) / 2, 2)
+
         item["Q1_2025"] = q1_25
         item["Q2_2025"] = q2_25
         item["Q3_2025"] = q3_25
@@ -262,6 +271,7 @@ def build_initial_dataset():
         item["Base_Price_2025_Avg"] = avg_2025
         item["Q1_2026"] = q1_26
         item["Current_Q2_2026"] = q2_26
+        item["YTD_2026_Avg"] = ytd_2026_avg
         item["Budgeted Price"] = round(avg_2025 * 1.10, 2)
 
         processed_list.append(item)
@@ -277,16 +287,19 @@ def generate_price_history_and_forecast(df):
     history_data = []
     for idx, row in df.iterrows():
         base_avg_2025 = row["Base_Price_2025_Avg"]
+        ytd_avg_2026 = row["YTD_2026_Avg"]
         current_q = row["Current_Q2_2026"]
 
-        forecast_price = round(current_q * (1 + row["Forecast_Shift_%"] / 100), 2)
-        price_delta_pct = round(
-            ((forecast_price - current_q) / current_q) * 100, 2
-        )
+        # 2026 Projection
+        proj_2026 = round(current_q * (1 + row["Forecast_Shift_%"] / 100), 2)
+        price_delta_pct = round(((proj_2026 - current_q) / current_q) * 100, 2)
+
+        # 2027 Projection
+        proj_2027 = round(proj_2026 * (1 + row.get("Projection_2027_Shift_%", 2.0) / 100), 2)
 
         budget = row["Budgeted Price"]
         variance_pct = (
-            ((forecast_price - budget) / budget) * 100 if budget > 0 else 0.0
+            ((proj_2026 - budget) / budget) * 100 if budget > 0 else 0.0
         )
 
         if variance_pct <= -10.0:
@@ -308,6 +321,9 @@ def generate_price_history_and_forecast(df):
             "Raw_Budget": budget,
             "Current_Price": current_q,
             "Baseline (2025 Avg Price)": format_currency(base_avg_2025),
+            "Current YTD 2026 Avg Price": format_currency(ytd_avg_2026),
+            "2026 Market Projection": format_currency(proj_2026),
+            "2027 Market Projection": format_currency(proj_2027),
             "Budgeted Price": format_currency(budget),
             "Q1-2025 (Hist)": format_currency(row["Q1_2025"]),
             "Q2-2025 (Hist)": format_currency(row["Q2_2025"]),
@@ -315,8 +331,7 @@ def generate_price_history_and_forecast(df):
             "Q4-2025 (Hist)": format_currency(row["Q4_2025"]),
             "Q1-2026 (Hist)": format_currency(row["Q1_2026"]),
             "Current Q2-2026 (Hist)": format_currency(current_q),
-            "6M Forecast Price": format_currency(forecast_price),
-            "Raw_Forecast": forecast_price,
+            "Raw_Forecast": proj_2026,
             "Forecast Shift %": f"{price_delta_pct:+.2f}%",
             "Raw_Forecast_Shift": price_delta_pct,
             "Variance vs Budget (%)": f"{variance_pct:+.2f}%",
@@ -333,21 +348,19 @@ def generate_price_history_and_forecast(df):
 # Section 1: Budget Entry
 st.subheader("1. Enter Budgeted Prices & Forecast Assumptions")
 st.caption(
-    "💡 **Baseline Benchmark:** Set as the average price from the previous year (2025). Edit budgeted target prices or forecast shifts below!"
+    "💡 **Planning Benchmarks:** View 2025 baselines, YTD 2026 averages, and market projections for 2026/2027. Edit budgeted target prices or forecast shifts below!"
 )
 
+# First Table Columns (Removed driver percentage columns, added YTD 2026 and Projections)
 editor_display_cols = [
     "Commodity",
     "Region",
     "Unit",
     "Base_Price_2025_Avg",
+    "YTD_2026_Avg",
     "Budgeted Price",
     "Forecast_Shift_%",
-    "Primary Driver",
-    "Energy_Share_%",
-    "Tariff_Share_%",
-    "Freight_Share_%",
-    "Unknown_Share_%",
+    "Projection_2027_Shift_%",
 ]
 
 edited_df = st.data_editor(
@@ -355,7 +368,13 @@ edited_df = st.data_editor(
     column_config={
         "Base_Price_2025_Avg": st.column_config.NumberColumn(
             "Baseline (2025 Avg Price)",
-            help="Average price across 2025 (Q1-Q4).",
+            help="Average price across 2025.",
+            format="$%.2f",
+            disabled=True,
+        ),
+        "YTD_2026_Avg": st.column_config.NumberColumn(
+            "Current YTD 2026 Avg Price",
+            help="Year-to-date average price for 2026.",
             format="$%.2f",
             disabled=True,
         ),
@@ -366,25 +385,14 @@ edited_df = st.data_editor(
             min_value=0,
         ),
         "Forecast_Shift_%": st.column_config.NumberColumn(
-            "Forecast Shift (%)",
-            help="Expected percentage shift over next 6 months.",
+            "2026 Projection Shift (%)",
+            help="Expected percentage shift for 2026.",
             format="%.2f%%",
         ),
-        "Primary Driver": st.column_config.TextColumn(
-            "Primary Cost Driver",
-            help="Main cause driving price changes.",
-        ),
-        "Energy_Share_%": st.column_config.NumberColumn(
-            "Energy Share (%)", format="%.1f%%"
-        ),
-        "Tariff_Share_%": st.column_config.NumberColumn(
-            "Tariff Share (%)", format="%.1f%%"
-        ),
-        "Freight_Share_%": st.column_config.NumberColumn(
-            "Freight Share (%)", format="%.1f%%"
-        ),
-        "Unknown_Share_%": st.column_config.NumberColumn(
-            "Unknown Share (%)", format="%.1f%%"
+        "Projection_2027_Shift_%": st.column_config.NumberColumn(
+            "2027 Projection Shift (%)",
+            help="Expected percentage shift for 2027 vs 2026.",
+            format="%.2f%%",
         ),
     },
     use_container_width=True,
@@ -409,7 +417,10 @@ with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             "Region",
             "Unit",
             "Baseline (2025 Avg Price)",
+            "Current YTD 2026 Avg Price",
             "Budgeted Price",
+            "2026 Market Projection",
+            "2027 Market Projection",
             "Primary Driver",
             "Q1-2025 (Hist)",
             "Q2-2025 (Hist)",
@@ -417,7 +428,6 @@ with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             "Q4-2025 (Hist)",
             "Q1-2026 (Hist)",
             "Current Q2-2026 (Hist)",
-            "6M Forecast Price",
             "Forecast Shift %",
             "Variance vs Budget (%)",
             "Negotiation Action",
@@ -437,7 +447,7 @@ st.markdown("---")
 # Section 2: Full Table View
 st.subheader("2. 18-Month Historical Quarterly Trends & Forecasts")
 st.caption(
-    "Budgeted prices are highlighted in **light green**, and Forecast & Shift columns are in **light purple**."
+    "Budgeted prices are highlighted in **light green**, and Projections are in **light purple**."
 )
 
 show_historical_quarters = st.checkbox(
@@ -449,7 +459,7 @@ base_cols = [
     "Region",
     "Unit",
     "Baseline (2025 Avg Price)",
-    "Primary Driver",
+    "Current YTD 2026 Avg Price",
     "Budgeted Price",
 ]
 
@@ -467,7 +477,8 @@ hist_cols = (
 )
 
 summary_cols = [
-    "6M Forecast Price",
+    "2026 Market Projection",
+    "2027 Market Projection",
     "Forecast Shift %",
     "Variance vs Budget (%)",
     "Negotiation Action",
@@ -485,7 +496,7 @@ styled_df = (
     )
     .map(
         lambda x: "background-color: #f3e8ff; color: #000000; font-weight: bold;",
-        subset=["6M Forecast Price", "Forecast Shift %"],
+        subset=["2026 Market Projection", "2027 Market Projection", "Forecast Shift %"],
     )
     .map(
         lambda val: (
@@ -506,7 +517,7 @@ st.dataframe(styled_df, use_container_width=True)
 st.markdown("---")
 
 # Section 3: Charts & Map
-st.markdown("#### 📈 Price Trend Trajectory (18 Months + 6M Forecast)")
+st.markdown("#### 📈 Price Trend Trajectory (18 Months + Projections)")
 
 time_cols = [
     "Q1-2025 (Hist)",
@@ -515,7 +526,8 @@ time_cols = [
     "Q4-2025 (Hist)",
     "Q1-2026 (Hist)",
     "Current Q2-2026 (Hist)",
-    "6M Forecast Price",
+    "2026 Market Projection",
+    "2027 Market Projection",
 ]
 
 fig_line = go.Figure()
@@ -635,7 +647,7 @@ fig_bar.add_trace(
     go.Bar(
         x=labels,
         y=df_processed["Raw_Forecast"],
-        name="6M Forecast Price ($)",
+        name="2026 Market Projection ($)",
         marker_color="#8A2BE2",
         text=df_processed["Raw_Forecast"],
         texttemplate="$%{y:,.2f}",
@@ -675,8 +687,9 @@ fig_map = px.scatter_map(
         "Region": True,
         "Unit": True,
         "Baseline (2025 Avg Price)": True,
-        "Current Q2-2026 (Hist)": True,
-        "6M Forecast Price": True,
+        "Current YTD 2026 Avg Price": True,
+        "2026 Market Projection": True,
+        "2027 Market Projection": True,
         "Budgeted Price": True,
         "Variance vs Budget (%)": True,
         "Negotiation Action": True,
