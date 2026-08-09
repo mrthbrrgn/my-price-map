@@ -146,6 +146,13 @@ def format_currency(val):
     return f"${val:,.2f}"
 
 
+def format_pct_diff(val, base):
+    if base <= 0 or pd.isna(val) or pd.isna(base):
+        return "0.00%"
+    diff_pct = ((val - base) / base) * 100
+    return f"{diff_pct:+.2f}%"
+
+
 def build_initial_dataset():
     np.random.seed(42)
 
@@ -261,7 +268,6 @@ def build_initial_dataset():
         q1_26 = round(avg_2025 * (1 + np.random.uniform(-0.04, 0.04)), 2)
         q2_26 = round(q1_26 * (1 + np.random.uniform(-0.03, 0.03)), 2)
 
-        # Current YTD 2026 Average Price
         ytd_2026_avg = round((q1_26 + q2_26) / 2, 2)
 
         item["Q1_2025"] = q1_25
@@ -272,8 +278,6 @@ def build_initial_dataset():
         item["Q1_2026"] = q1_26
         item["Current_Q2_2026"] = q2_26
         item["YTD_2026_Avg"] = ytd_2026_avg
-        
-        # Company Budget Target (e.g. baseline benchmarked)
         item["Company_Budget_Price"] = round(avg_2025 * 1.05, 2)
 
         processed_list.append(item)
@@ -292,12 +296,13 @@ def generate_price_history_and_forecast(df):
         ytd_avg_2026 = row["YTD_2026_Avg"]
         current_q = row["Current_Q2_2026"]
 
-        # 2026 Market Projection
+        # Market Projections
         proj_2026 = round(current_q * (1 + row["Forecast_Shift_%"] / 100), 2)
         price_delta_pct = round(((proj_2026 - current_q) / current_q) * 100, 2)
 
-        # 2027 Market Projection (independent market trajectory)
-        proj_2027 = round(proj_2026 * (1 + row.get("Projection_2027_Shift_%", 2.0) / 100), 2)
+        proj_2027 = round(
+            proj_2026 * (1 + row.get("Projection_2027_Shift_%", 2.0) / 100), 2
+        )
 
         budget = row["Company_Budget_Price"]
         variance_pct = (
@@ -322,11 +327,19 @@ def generate_price_history_and_forecast(df):
             "Data Source": row["Data Source"],
             "Raw_Budget": budget,
             "Current_Price": current_q,
+            "Company Budget Target ($)": format_currency(budget),
             "Baseline (2025 Avg Price)": format_currency(base_avg_2025),
+            "2025 Avg vs Budget (%)": format_pct_diff(base_avg_2025, budget),
             "Current YTD 2026 Avg Price": format_currency(ytd_avg_2026),
-            "Company Budget Price ($)": format_currency(budget),
+            "YTD 2026 vs Budget (%)": format_pct_diff(ytd_avg_2026, budget),
+            "Current Q2-2026 Price": format_currency(current_q),
+            "Current Q2 vs Budget (%)": format_pct_diff(current_q, budget),
+            "2026 Market Shift (%)": f"{row['Forecast_Shift_%']:+.2f}%",
             "2026 Market Projection": format_currency(proj_2026),
+            "2026 Projection vs Budget (%)": f"{variance_pct:+.2f}%",
+            "2027 Market Shift (%)": f"{row.get('Projection_2027_Shift_%', 2.0):+.2f}%",
             "2027 Market Projection": format_currency(proj_2027),
+            "2027 Projection vs Budget (%)": format_pct_diff(proj_2027, budget),
             "Q1-2025 (Hist)": format_currency(row["Q1_2025"]),
             "Q2-2025 (Hist)": format_currency(row["Q2_2025"]),
             "Q3-2025 (Hist)": format_currency(row["Q3_2025"]),
@@ -350,16 +363,17 @@ def generate_price_history_and_forecast(df):
 # Section 1: Budget Entry & Assumptions
 st.subheader("1. Enter Company Budget & Market Projection Assumptions")
 st.caption(
-    "💡 **Planning Benchmarks:** Edit company budgeted target prices independently from 2026 and 2027 market projections!"
+    "💡 **Company Budget Comparisons:** Compare your budget directly against 2025 baselines, YTD 2026 averages, current Q2 prices, and projected 2026/2027 shifts."
 )
 
 editor_display_cols = [
     "Commodity",
     "Region",
     "Unit",
+    "Company_Budget_Price",
     "Base_Price_2025_Avg",
     "YTD_2026_Avg",
-    "Company_Budget_Price",
+    "Current_Q2_2026",
     "Forecast_Shift_%",
     "Projection_2027_Shift_%",
 ]
@@ -367,6 +381,12 @@ editor_display_cols = [
 edited_df = st.data_editor(
     st.session_state["budget_df"][editor_display_cols],
     column_config={
+        "Company_Budget_Price": st.column_config.NumberColumn(
+            "Company Budget Target ($)",
+            help="Company's target budget.",
+            format="$%.2f",
+            min_value=0,
+        ),
         "Base_Price_2025_Avg": st.column_config.NumberColumn(
             "Baseline (2025 Avg Price)",
             help="Average price across 2025.",
@@ -379,11 +399,11 @@ edited_df = st.data_editor(
             format="$%.2f",
             disabled=True,
         ),
-        "Company_Budget_Price": st.column_config.NumberColumn(
-            "Company Budget Target ($)",
-            help="Company's target budget for these commodities.",
+        "Current_Q2_2026": st.column_config.NumberColumn(
+            "Current Q2-2026 Price",
+            help="Latest active quarter spot benchmark price.",
             format="$%.2f",
-            min_value=0,
+            disabled=True,
         ),
         "Forecast_Shift_%": st.column_config.NumberColumn(
             "2026 Market Shift (%)",
@@ -409,6 +429,29 @@ df_processed = generate_price_history_and_forecast(
     st.session_state["budget_df"]
 )
 
+# Render Detailed Budget Comparison Table in Section 1
+sec1_comparison_cols = [
+    "Commodity",
+    "Region",
+    "Unit",
+    "Company Budget Target ($)",
+    "Baseline (2025 Avg Price)",
+    "2025 Avg vs Budget (%)",
+    "Current YTD 2026 Avg Price",
+    "YTD 2026 vs Budget (%)",
+    "Current Q2-2026 Price",
+    "Current Q2 vs Budget (%)",
+    "2026 Market Shift (%)",
+    "2026 Market Projection",
+    "2026 Projection vs Budget (%)",
+    "2027 Market Shift (%)",
+    "2027 Market Projection",
+    "2027 Projection vs Budget (%)",
+]
+
+st.markdown("##### 📋 Company Budget vs Market Benchmarks & Projections")
+st.dataframe(df_processed[sec1_comparison_cols], use_container_width=True)
+
 # Excel Export Generator
 buffer = io.BytesIO()
 with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
@@ -417,20 +460,20 @@ with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             "Commodity",
             "Region",
             "Unit",
+            "Company Budget Target ($)",
             "Baseline (2025 Avg Price)",
+            "2025 Avg vs Budget (%)",
             "Current YTD 2026 Avg Price",
-            "Company Budget Price ($)",
+            "YTD 2026 vs Budget (%)",
+            "Current Q2-2026 Price",
+            "Current Q2 vs Budget (%)",
+            "2026 Market Shift (%)",
             "2026 Market Projection",
+            "2026 Projection vs Budget (%)",
+            "2027 Market Shift (%)",
             "2027 Market Projection",
+            "2027 Projection vs Budget (%)",
             "Primary Driver",
-            "Q1-2025 (Hist)",
-            "Q2-2025 (Hist)",
-            "Q3-2025 (Hist)",
-            "Q4-2025 (Hist)",
-            "Q1-2026 (Hist)",
-            "Current Q2-2026 (Hist)",
-            "Forecast Shift %",
-            "Variance vs Budget (%)",
             "Negotiation Action",
             "Data Source",
         ]
@@ -461,7 +504,8 @@ base_cols = [
     "Unit",
     "Baseline (2025 Avg Price)",
     "Current YTD 2026 Avg Price",
-    "Company Budget Price ($)",
+    "Current Q2-2026 Price",
+    "Company Budget Target ($)",
 ]
 
 hist_cols = (
@@ -493,7 +537,7 @@ styled_df = (
     .style.map(lambda x: "background-color: #ffffff; color: #000000;")
     .map(
         lambda x: "background-color: #e6f4ea; color: #000000; font-weight: bold;",
-        subset=["Company Budget Price ($)"],
+        subset=["Company Budget Target ($)"],
     )
     .map(
         lambda x: "background-color: #f3e8ff; color: #000000; font-weight: bold;",
@@ -689,7 +733,8 @@ fig_map = px.scatter_map(
         "Unit": True,
         "Baseline (2025 Avg Price)": True,
         "Current YTD 2026 Avg Price": True,
-        "Company Budget Price ($)": True,
+        "Current Q2-2026 Price": True,
+        "Company Budget Target ($)": True,
         "2026 Market Projection": True,
         "2027 Market Projection": True,
         "Variance vs Budget (%)": True,
