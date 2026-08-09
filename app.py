@@ -107,7 +107,7 @@ if not check_user_access():
     st.stop()
 
 # -------------------------------------------------------------
-# SIDEBAR INSTRUCTIONS & FORMULAS
+# SIDEBAR INSTRUCTIONS & FORMULAS (CLEANED LATEX FORMATTING)
 # -------------------------------------------------------------
 with st.sidebar:
     st.markdown("👤 Status: **Authorized Team User**")
@@ -129,32 +129,25 @@ with st.sidebar:
         1. **Edit Assumptions (Section 1):** Click inside table cells to update **Company Budget Targets** or **2026/2027 Market Shifts (%)**.
         2. **Automatic Savings:** Any edits automatically update all downstream tables, trajectory charts, and maps.
         3. **Review Negotiation Triggers:**
-           * 🟢 **Opportunity:** Market price $\le 10\%$ below budget.
-           * 🔴 **Risk:** Market price $\ge 10\%$ above budget.
+           * 🟢 **Opportunity:** Market price <= 10% below budget.
+           * 🔴 **Risk:** Market price >= 10% above budget.
         4. **Export Data:** Click the **Export Excel** button to download full comparison sheets.
         """
     )
 
     st.markdown("---")
     with st.expander("📐 Calculation Formulas"):
-        st.markdown(
-            """
-            **1. 2026 Market Projection ($):**
-            $$\text{Current Q2 Price} \times \left(1 + \frac{\text{2026 Market Shift \%}}{100}\right)$$
+        st.markdown("**1. 2026 Market Projection ($):**")
+        st.latex(r"\text{Current Q2 Price} \times \left(1 + \frac{\text{2026 Shift \%}}{100}\right)")
 
-            **2. 2027 Market Projection ($):**
-            $$\text{2026 Projection} \times \left(1 + \frac{\text{2027 Market Shift \%}}{100}\right)$$
+        st.markdown("**2. 2027 Market Projection ($):**")
+        st.latex(r"\text{2026 Projection} \times \left(1 + \frac{\text{2027 Shift \%}}{100}\right)")
 
-            **3. Budget vs Measure Variance (%):**
-            $$\left(\frac{\text{Company Budget Target} - \text{Benchmark Price}}{\text{Benchmark Price}}\right) \times 100$$
+        st.markdown("**3. Budget vs Measure Variance (%):**")
+        st.latex(r"\left(\frac{\text{Company Budget Target} - \text{Benchmark Price}}{\text{Benchmark Price}}\right) \times 100")
 
-            **4. Forecast Shift (%):**
-            $$\left(\frac{\text{2026 Projection} - \text{Current Q2 Price}}{\text{Current Q2 Price}}\right) \times 100$$
-
-            **5. Cost Driver Breakdown Share (%):**
-            Shows percentage attribution of energy, tariffs, freight, and other factors summing to 100%.
-            """
-        )
+        st.markdown("**4. Forecast Shift (%):**")
+        st.latex(r"\left(\frac{\text{2026 Projection} - \text{Current Q2 Price}}{\text{Current Q2 Price}}\right) \times 100")
 
 # -------------------------------------------------------------
 # MAIN APPLICATION CONTENT
@@ -369,6 +362,14 @@ def generate_price_history_and_forecast(df):
             "Data Source": row["Data Source"],
             "Raw_Budget": budget,
             "Current_Price": current_q,
+            "Company_Budget_Price": budget,
+            "Base_Price_2025_Avg": base_avg_2025,
+            "YTD_2026_Avg": ytd_2026_avg,
+            "Current_Q2_2026": current_q,
+            "Forecast_Shift_%": row["Forecast_Shift_%"],
+            "Projection_2027_Shift_%": row.get("Projection_2027_Shift_%", 2.0),
+            "2026_Projection_Val": proj_2026,
+            "2027_Projection_Val": proj_2027,
             "Company Budget Target ($)": format_currency(budget),
             "Baseline (2025 Avg Price)": format_currency(base_avg_2025),
             "Budget vs 2025 Avg (%)": format_budget_vs_measure(budget, base_avg_2025),
@@ -377,12 +378,10 @@ def generate_price_history_and_forecast(df):
             "Current Q2-2026 Price": format_currency(current_q),
             "Budget vs Current Q2 (%)": format_budget_vs_measure(budget, current_q),
             "2026 Market Shift (%)": f"{row['Forecast_Shift_%']:+.2f}%",
-            "2026 Market Projection": format_currency(proj_2026),
-            "Raw_2026_Projection": proj_2026,
+            "2026 Market Projection ($)": format_currency(proj_2026),
             "Budget vs 2026 Proj (%)": format_budget_vs_measure(budget, proj_2026),
             "2027 Market Shift (%)": f"{row.get('Projection_2027_Shift_%', 2.0):+.2f}%",
-            "2027 Market Projection": format_currency(proj_2027),
-            "Raw_2027_Projection": proj_2027,
+            "2027 Market Projection ($)": format_currency(proj_2027),
             "Budget vs 2027 Proj (%)": format_budget_vs_measure(budget, proj_2027),
             "Q1-2025 (Hist)": format_currency(row["Q1_2025"]),
             "Q2-2025 (Hist)": format_currency(row["Q2_2025"]),
@@ -408,7 +407,12 @@ def generate_price_history_and_forecast(df):
 st.subheader("1. Enter Company Budget & Market Projection Assumptions")
 st.caption("💡 **Company Budget Comparisons:** Compare your budget directly against 2025 baselines, YTD 2026 averages, current Q2 prices, and projected 2026/2027 market shifts.")
 
-# Base editable columns
+# Calculate initial projections for the data editor display
+calc_df = generate_price_history_and_forecast(st.session_state["budget_df"])
+st.session_state["budget_df"]["2026_Projection_Val"] = calc_df["2026_Projection_Val"]
+st.session_state["budget_df"]["2027_Projection_Val"] = calc_df["2027_Projection_Val"]
+
+# Data editor display columns with Values BEFORE Shifts
 editor_display_cols = [
     "Commodity",
     "Region",
@@ -417,7 +421,9 @@ editor_display_cols = [
     "Base_Price_2025_Avg",
     "YTD_2026_Avg",
     "Current_Q2_2026",
+    "2026_Projection_Val",
     "Forecast_Shift_%",
+    "2027_Projection_Val",
     "Projection_2027_Shift_%",
 ]
 
@@ -448,10 +454,22 @@ edited_df = st.data_editor(
             format="$%,.2f",
             disabled=True,
         ),
+        "2026_Projection_Val": st.column_config.NumberColumn(
+            "2026 Market Projection ($)",
+            help="Calculated market projection for 2026.",
+            format="$%,.2f",
+            disabled=True,
+        ),
         "Forecast_Shift_%": st.column_config.NumberColumn(
             "2026 Market Shift (%)",
             help="Expected percentage market shift for 2026.",
             format="%.2f%%",
+        ),
+        "2027_Projection_Val": st.column_config.NumberColumn(
+            "2027 Market Projection ($)",
+            help="Calculated market projection for 2027.",
+            format="$%,.2f",
+            disabled=True,
         ),
         "Projection_2027_Shift_%": st.column_config.NumberColumn(
             "2027 Market Shift (%)",
@@ -472,7 +490,7 @@ df_processed = generate_price_history_and_forecast(
     st.session_state["budget_df"]
 )
 
-# Render Detailed Budget Comparison Table in Section 1 (Includes 2026 and 2027 Projections)
+# Render Detailed Budget Comparison Table in Section 1
 sec1_comparison_cols = [
     "Commodity",
     "Region",
@@ -484,11 +502,11 @@ sec1_comparison_cols = [
     "Budget vs YTD 2026 (%)",
     "Current Q2-2026 Price",
     "Budget vs Current Q2 (%)",
+    "2026 Market Projection ($)",
     "2026 Market Shift (%)",
-    "2026 Market Projection",
     "Budget vs 2026 Proj (%)",
+    "2027 Market Projection ($)",
     "2027 Market Shift (%)",
-    "2027 Market Projection",
     "Budget vs 2027 Proj (%)",
 ]
 
@@ -515,11 +533,11 @@ with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             "Budget vs YTD 2026 (%)",
             "Current Q2-2026 Price",
             "Budget vs Current Q2 (%)",
+            "2026 Market Projection ($)",
             "2026 Market Shift (%)",
-            "2026 Market Projection",
             "Budget vs 2026 Proj (%)",
+            "2027 Market Projection ($)",
             "2027 Market Shift (%)",
-            "2027 Market Projection",
             "Budget vs 2027 Proj (%)",
             "Primary Driver",
             "Negotiation Action",
@@ -568,8 +586,8 @@ hist_cols = (
 )
 
 summary_cols = [
-    "2026 Market Projection",
-    "2027 Market Projection",
+    "2026 Market Projection ($)",
+    "2027 Market Projection ($)",
     "Forecast Shift %",
     "Variance vs Budget (%)",
     "Negotiation Action",
@@ -587,7 +605,7 @@ styled_df = (
     )
     .map(
         lambda x: "background-color: #f3e8ff; color: #000000; font-weight: bold; text-align: center;",
-        subset=["2026 Market Projection", "2027 Market Projection", "Forecast Shift %"],
+        subset=["2026 Market Projection ($)", "2027 Market Projection ($)", "Forecast Shift %"],
     )
     .map(
         lambda val: (
@@ -617,8 +635,8 @@ time_cols = [
     "Q4-2025 (Hist)",
     "Q1-2026 (Hist)",
     "Current Q2-2026 (Hist)",
-    "2026 Market Projection",
-    "2027 Market Projection",
+    "2026 Market Projection ($)",
+    "2027 Market Projection ($)",
 ]
 
 fig_line = go.Figure()
@@ -631,7 +649,7 @@ for idx, row in df_processed.iterrows():
 
     fig_line.add_trace(
         go.Scatter(
-            x=[c.replace(" (Hist)", "") for c in time_cols],
+            x=[c.replace(" (Hist)", "").replace(" ($)", "") for c in time_cols],
             y=values,
             mode="lines+markers",
             name=label,
@@ -784,8 +802,8 @@ fig_map = px.scatter_map(
         "Current YTD 2026 Avg Price": True,
         "Current Q2-2026 Price": True,
         "Company Budget Target ($)": True,
-        "2026 Market Projection": True,
-        "2027 Market Projection": True,
+        "2026 Market Projection ($)": True,
+        "2027 Market Projection ($)": True,
         "Variance vs Budget (%)": True,
         "Negotiation Action": True,
         "Data Source": True,
