@@ -626,6 +626,10 @@ st.caption("Unbundle base commodity price from ocean container surcharges, inlan
 
 freight_df = df_processed[["Commodity", "Region", "Unit", "Actual Provider Price ($)", "Freight_Share_%"]].copy()
 
+# Format Freight Share % strictly to 2 decimal places with % symbol
+freight_df["Freight Share (%)"] = freight_df["Freight_Share_%"].apply(lambda x: f"{x:.2f}%")
+
+# Calculated Freight Unbundling Components
 freight_df["Est. Inland Freight ($)"] = (df_processed["Raw_Actual_Provider"] * (freight_df["Freight_Share_%"] / 100) * 0.4).apply(format_currency)
 freight_df["Est. Ocean Surcharge ($)"] = (df_processed["Raw_Actual_Provider"] * (freight_df["Freight_Share_%"] / 100) * 0.6).apply(format_currency)
 freight_df["Unbundled Base Material ($)"] = (df_processed["Raw_Actual_Provider"] * (1 - freight_df["Freight_Share_%"] / 100)).apply(format_currency)
@@ -633,10 +637,20 @@ freight_df["Freight Action"] = freight_df["Freight_Share_%"].apply(
     lambda s: "🔴 Renegotiate Peak Surcharge" if s >= 50.0 else "✅ Standard Freight Rate"
 )
 
-st.dataframe(freight_df.style.map(lambda x: "text-align: center;"), use_container_width=True)
+# Display styled table without raw decimal floats
+display_freight_df = freight_df[[
+    "Commodity", 
+    "Region", 
+    "Unit", 
+    "Actual Provider Price ($)", 
+    "Freight Share (%)", 
+    "Est. Inland Freight ($)", 
+    "Est. Ocean Surcharge ($)", 
+    "Unbundled Base Material ($)", 
+    "Freight Action"
+]]
 
-st.markdown("---")
-
+st.dataframe(display_freight_df.style.map(lambda x: "text-align: center;"), use_container_width=True)
 # -------------------------------------------------------------
 # SECTION 4: HISTORICAL TRENDS & INDIVIDUAL SCALED CHARTS (3x2 GRID)
 # -------------------------------------------------------------
