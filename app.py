@@ -139,23 +139,31 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Initialize Session State Dataframe for full persistence
-if "budget_df" not in st.session_state:
-    initial_commodities = [
+# Helper function to format currency
+def format_currency(val):
+    if pd.isna(val):
+        return "$0.00"
+    return f"${val:,.2f}"
+
+
+# Generate 2025 Quarterly Baseline & Calculates Prior Year Average
+def build_initial_dataset():
+    np.random.seed(42)
+
+    raw_items = [
         {
             "Commodity": "Coconut Oil",
             "Region": "Europe",
             "lat": 51.9244,
             "lon": 4.4777,
             "Unit": "$/tonne",
-            "Base_Price": 1650.0,
-            "Budgeted Price": 1897.5,
-            "Forecast_Shift_%": -5.0,
+            "Seed_Price": 1650.0,
             "Primary Driver": "Freight Surcharges & Weather",
             "Energy_Share_%": 10.0,
             "Tariff_Share_%": 20.0,
             "Freight_Share_%": 60.0,
             "Unknown_Share_%": 10.0,
+            "Forecast_Shift_%": -5.0,
             "Data Source": "CME / Malayan Palm Oil Board (MPOB)",
         },
         {
@@ -164,14 +172,13 @@ if "budget_df" not in st.session_state:
             "lat": 53.5511,
             "lon": 9.9937,
             "Unit": "$/tonne",
-            "Base_Price": 980.0,
-            "Budgeted Price": 1127.0,
-            "Forecast_Shift_%": -12.0,
+            "Seed_Price": 980.0,
             "Primary Driver": "Agricultural Yields",
             "Energy_Share_%": 0.0,
             "Tariff_Share_%": 10.0,
             "Freight_Share_%": 80.0,
             "Unknown_Share_%": 10.0,
+            "Forecast_Shift_%": -12.0,
             "Data Source": "Bursa Malaysia (KL CPO Futures Index)",
         },
         {
@@ -180,14 +187,13 @@ if "budget_df" not in st.session_state:
             "lat": 29.7604,
             "lon": -95.3698,
             "Unit": "$/kg",
-            "Base_Price": 1.45,
-            "Budgeted Price": 1.67,
-            "Forecast_Shift_%": 2.1,
+            "Seed_Price": 1.45,
             "Primary Driver": "Geopolitical / Energy Shock",
             "Energy_Share_%": 90.0,
             "Tariff_Share_%": 5.0,
             "Freight_Share_%": 0.0,
             "Unknown_Share_%": 5.0,
+            "Forecast_Shift_%": 2.1,
             "Data Source": "ICIS Petrochemical Gulf Coast Index",
         },
         {
@@ -196,14 +202,13 @@ if "budget_df" not in st.session_state:
             "lat": 43.6156,
             "lon": -84.2472,
             "Unit": "$/kg",
-            "Base_Price": 3.80,
-            "Budgeted Price": 4.37,
-            "Forecast_Shift_%": -15.0,
+            "Seed_Price": 3.80,
             "Primary Driver": "Energy Intensive Costs",
             "Energy_Share_%": 85.0,
             "Tariff_Share_%": 0.0,
             "Freight_Share_%": 10.0,
             "Unknown_Share_%": 5.0,
+            "Forecast_Shift_%": -15.0,
             "Data Source": "S&P Global Platts Chemical Insights",
         },
         {
@@ -212,14 +217,13 @@ if "budget_df" not in st.session_state:
             "lat": 50.1109,
             "lon": 8.6821,
             "Unit": "$/kg",
-            "Base_Price": 4.10,
-            "Budgeted Price": 4.71,
-            "Forecast_Shift_%": 1.2,
+            "Seed_Price": 4.10,
             "Primary Driver": "EU Energy & Import Duties",
             "Energy_Share_%": 70.0,
             "Tariff_Share_%": 15.0,
             "Freight_Share_%": 10.0,
             "Unknown_Share_%": 5.0,
+            "Forecast_Shift_%": 1.2,
             "Data Source": "ICIS European Silicones Benchmark",
         },
         {
@@ -228,43 +232,59 @@ if "budget_df" not in st.session_state:
             "lat": 41.8781,
             "lon": -87.6298,
             "Unit": "$/tonne",
-            "Base_Price": 820.0,
-            "Budgeted Price": 943.0,
-            "Forecast_Shift_%": -8.0,
+            "Seed_Price": 820.0,
             "Primary Driver": "Inflation & Domestic Transport",
             "Energy_Share_%": 15.0,
             "Tariff_Share_%": 0.0,
             "Freight_Share_%": 75.0,
             "Unknown_Share_%": 10.0,
+            "Forecast_Shift_%": -8.0,
             "Data Source": "USDA Oleochemical / Refined Glycerin Reports",
         },
     ]
-    st.session_state["budget_df"] = pd.DataFrame(initial_commodities)
+
+    processed_list = []
+    for item in raw_items:
+        seed = item["Seed_Price"]
+        q1_25 = round(seed * (1 + np.random.uniform(-0.05, 0.05)), 2)
+        q2_25 = round(seed * (1 + np.random.uniform(-0.05, 0.05)), 2)
+        q3_25 = round(seed * (1 + np.random.uniform(-0.05, 0.05)), 2)
+        q4_25 = round(seed * (1 + np.random.uniform(-0.05, 0.05)), 2)
+
+        # Base price = Exact average of previous year (2025)
+        avg_2025 = round((q1_25 + q2_25 + q3_25 + q4_25) / 4, 2)
+        
+        q1_26 = round(avg_2025 * (1 + np.random.uniform(-0.04, 0.04)), 2)
+        q2_26 = round(q1_26 * (1 + np.random.uniform(-0.03, 0.03)), 2)
+
+        item["Q1_2025"] = q1_25
+        item["Q2_2025"] = q2_25
+        item["Q3_2025"] = q3_25
+        item["Q4_2025"] = q4_25
+        item["Base_Price_2025_Avg"] = avg_2025
+        item["Q1_2026"] = q1_26
+        item["Current_Q2_2026"] = q2_26
+        item["Budgeted Price"] = round(avg_2025 * 1.10, 2)
+        
+        processed_list.append(item)
+
+    return pd.DataFrame(processed_list)
 
 
-def format_currency(val):
-    if pd.isna(val):
-        return "$0.00"
-    return f"${val:,.2f}"
+# Initialize Session State Dataframe
+if "budget_df" not in st.session_state:
+    st.session_state["budget_df"] = build_initial_dataset()
 
 
 def generate_price_history_and_forecast(df):
-    np.random.seed(42)
-
-    quarters = ["Q1-2025", "Q2-2025", "Q3-2025", "Q4-2025", "Q1-2026", "Q2-2026"]
-
     history_data = []
     for idx, row in df.iterrows():
-        base = row["Base_Price"]
-        q_prices = [
-            round(base * (1 + np.random.uniform(-0.08, 0.08)), 2)
-            for _ in quarters
-        ]
+        base_avg_2025 = row["Base_Price_2025_Avg"]
+        current_q = row["Current_Q2_2026"]
 
-        avg_last_6m = round((q_prices[-2] + q_prices[-1]) / 2, 2)
-        forecast_price = round(q_prices[-1] * (1 + row["Forecast_Shift_%"] / 100), 2)
+        forecast_price = round(current_q * (1 + row["Forecast_Shift_%"] / 100), 2)
         price_delta_pct = round(
-            ((forecast_price - q_prices[-1]) / q_prices[-1]) * 100, 2
+            ((forecast_price - current_q) / current_q) * 100, 2
         )
 
         budget = row["Budgeted Price"]
@@ -287,15 +307,15 @@ def generate_price_history_and_forecast(df):
             "Negotiation Action": flag,
             "Data Source": row["Data Source"],
             "Raw_Budget": budget,
-            "Current_Price": q_prices[-1],
+            "Current_Price": current_q,
+            "Baseline (2025 Avg Price)": format_currency(base_avg_2025),
             "Budgeted Price": format_currency(budget),
-            "Q1-2025 (Hist)": format_currency(q_prices[0]),
-            "Q2-2025 (Hist)": format_currency(q_prices[1]),
-            "Q3-2025 (Hist)": format_currency(q_prices[2]),
-            "Q4-2025 (Hist)": format_currency(q_prices[3]),
-            "Q1-2026 (Hist)": format_currency(q_prices[4]),
-            "Current Q2-2026 (Hist)": format_currency(q_prices[-1]),
-            "Avg Price (Last 6M)": format_currency(avg_last_6m),
+            "Q1-2025 (Hist)": format_currency(row["Q1_2025"]),
+            "Q2-2025 (Hist)": format_currency(row["Q2_2025"]),
+            "Q3-2025 (Hist)": format_currency(row["Q3_2025"]),
+            "Q4-2025 (Hist)": format_currency(row["Q4_2025"]),
+            "Q1-2026 (Hist)": format_currency(row["Q1_2026"]),
+            "Current Q2-2026 (Hist)": format_currency(current_q),
             "6M Forecast Price": format_currency(forecast_price),
             "Raw_Forecast": forecast_price,
             "Forecast Shift %": f"{price_delta_pct:+.2f}%",
@@ -313,13 +333,34 @@ def generate_price_history_and_forecast(df):
 
 # Section 1: Budget Entry
 st.subheader("1. Enter Budgeted Prices & Forecast Assumptions")
-st.caption("💡 **Editable Table:** Tap/click cells to edit target prices, forecast shifts, or cost drivers. Changes save automatically!")
+st.caption("💡 **Baseline Benchmark:** Set as the average price from the previous year (2025). Edit budgeted target prices or forecast shifts below!")
+
+# Exclude lat and lon from section 1 editor view
+editor_display_cols = [
+    "Commodity",
+    "Region",
+    "Unit",
+    "Base_Price_2025_Avg",
+    "Budgeted Price",
+    "Forecast_Shift_%",
+    "Primary Driver",
+    "Energy_Share_%",
+    "Tariff_Share_%",
+    "Freight_Share_%",
+    "Unknown_Share_%",
+]
 
 edited_df = st.data_editor(
-    st.session_state["budget_df"],
+    st.session_state["budget_df"][editor_display_cols],
     column_config={
+        "Base_Price_2025_Avg": st.column_config.NumberColumn(
+            "Baseline (2025 Avg Price)",
+            help="Average price across 2025 (Q1-Q4).",
+            format="$%.2f",
+            disabled=True,
+        ),
         "Budgeted Price": st.column_config.NumberColumn(
-            "Budgeted Price ($)",
+            "Budgeted Target Price ($)",
             help="Custom budgeted target price.",
             format="$%.2f",
             min_value=0,
@@ -343,7 +384,10 @@ edited_df = st.data_editor(
     key="budget_editor",
 )
 
-st.session_state["budget_df"] = edited_df
+# Re-merge hidden lat/lon and historical columns back into session state
+full_updated_df = st.session_state["budget_df"].copy()
+full_updated_df.update(edited_df)
+st.session_state["budget_df"] = full_updated_df
 
 df_processed = generate_price_history_and_forecast(st.session_state["budget_df"])
 
@@ -355,15 +399,15 @@ with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             "Commodity",
             "Region",
             "Unit",
-            "Primary Driver",
+            "Baseline (2025 Avg Price)",
             "Budgeted Price",
+            "Primary Driver",
             "Q1-2025 (Hist)",
             "Q2-2025 (Hist)",
             "Q3-2025 (Hist)",
             "Q4-2025 (Hist)",
             "Q1-2026 (Hist)",
             "Current Q2-2026 (Hist)",
-            "Avg Price (Last 6M)",
             "6M Forecast Price",
             "Forecast Shift %",
             "Variance vs Budget (%)",
@@ -387,7 +431,7 @@ st.caption("Budgeted prices are highlighted in **light green**, and Forecast & S
 
 show_historical_quarters = st.checkbox("Show Historical Quarterly Columns (Q1-2025 to Current)", value=False)
 
-base_cols = ["Commodity", "Region", "Unit", "Primary Driver", "Budgeted Price"]
+base_cols = ["Commodity", "Region", "Unit", "Baseline (2025 Avg Price)", "Primary Driver", "Budgeted Price"]
 
 hist_cols = [
     "Q1-2025 (Hist)",
@@ -399,7 +443,6 @@ hist_cols = [
 ] if show_historical_quarters else []
 
 summary_cols = [
-    "Avg Price (Last 6M)",
     "6M Forecast Price",
     "Forecast Shift %",
     "Variance vs Budget (%)",
@@ -540,7 +583,7 @@ fig_bar.add_trace(
     go.Bar(
         x=labels,
         y=df_processed["Raw_Budget"],
-        name="Budgeted Price ($)",
+        name="Budgeted Target Price ($)",
         marker_color="#34A853",
     )
 )
@@ -584,8 +627,8 @@ fig_map = px.scatter_map(
     hover_data={
         "Region": True,
         "Unit": True,
+        "Baseline (2025 Avg Price)": True,
         "Current Q2-2026 (Hist)": True,
-        "Avg Price (Last 6M)": True,
         "6M Forecast Price": True,
         "Budgeted Price": True,
         "Variance vs Budget (%)": True,
